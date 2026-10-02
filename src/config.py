@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     DEFAULT_TIMEOUT_SECONDS: float = 3.0
     RECONCILIATION_INTERVAL_SECONDS: float = 2.0
     MAX_ATTEMPTS_PER_INTENT: int = 3
+    LLM_PROVIDER: str = "offline" # offline, gemini, openai, ollama
+    GEMINI_API_KEY: str | None = None
+    OPENAI_API_KEY: str | None = None
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
 
     class Config:
         env_file = ".env"
