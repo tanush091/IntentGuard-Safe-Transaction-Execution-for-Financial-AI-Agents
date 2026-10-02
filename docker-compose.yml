@@ -19,30 +19,45 @@ services:
       timeout: 5s
       retries: 5
 
-  payment-service:
-    build: .
-    container_name: intentguard_payment_mock
-    command: uvicorn src.mock_payment.api:app --host 0.0.0.0 --port 8001
+  mock-payment-service:
+    build:
+      context: .
+      dockerfile: ./mock-payment-service/Dockerfile
+    container_name: intentguard_mock_payment
     ports:
       - "8001:8001"
     environment:
       - PORT=8001
+      - HOST=0.0.0.0
     restart: on-failure
 
-  gateway:
-    build: .
-    container_name: intentguard_gateway
-    command: uvicorn src.gateway.api:app --host 0.0.0.0 --port 8000
+  backend:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: intentguard_backend
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://intentguard:intentguard_secret@postgres:5432/intentguard_db
-      - PAYMENT_SERVICE_URL=http://payment-service:8001
+      - PAYMENT_SERVICE_URL=http://mock-payment-service:8001
+      - ENVIRONMENT=production
     depends_on:
       postgres:
         condition: service_healthy
-      payment-service:
+      mock-payment-service:
         condition: service_started
+    restart: on-failure
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: intentguard_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
     restart: on-failure
 
 volumes:

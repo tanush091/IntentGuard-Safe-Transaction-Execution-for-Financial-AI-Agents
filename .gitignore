@@ -1,4 +1,4 @@
-# Python
+# Python & Environments
 __pycache__/
 *.py[cod]
 *$py.class
@@ -7,28 +7,39 @@ __pycache__/
 env/
 venv/
 ENV/
-.venv
+.venv/
+.venv*/
 
 # Testing & Coverage
 .pytest_cache/
 .coverage
 htmlcov/
+pytest_output.txt
 
 # Environment & Secrets
 .env
 .env.local
+.env.*.local
 
-# Databases
+# Databases & Persistence
 *.db
 *.sqlite3
 intentguard.db
+*.log
 
-# IDE & Editor
+# IDEs & OS
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
 .DS_Store
 Thumbs.db
+
+# Node & Frontend
+node_modules/
+dist/
+build/
+.npm/
+
+# Experiment generated temp files
+experiments/results/temp/
