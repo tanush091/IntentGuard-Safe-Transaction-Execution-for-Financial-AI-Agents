@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadEffectsLedger();
   loadReviewCases();
   loadAuditLogs();
+  checkLLMConfig();
 });
 
 // Setup Navigation Tabs
@@ -419,3 +420,96 @@ async function loadAuditLogs() {
     console.error("Error loading audit logs:", err);
   }
 }
+
+async function checkLLMConfig() {
+  try {
+    const res = await fetch("/api/config");
+    const data = await res.json();
+    if (data.llm_configured || data.provider === "offline") {
+      document.getElementById("llm-chat-header").style.display = "block";
+      document.getElementById("llm-chat-body").style.display = "block";
+    }
+  } catch (err) {
+    console.error("Error checking LLM config", err);
+  }
+}
+
+async function submitChat() {
+  const inputEl = document.getElementById("chat-input");
+  const text = inputEl.value;
+  if (!text) return;
+  inputEl.value = "";
+
+  const chatMessages = document.getElementById("chat-messages");
+  chatMessages.innerHTML += `<div style="color:#fff; margin-top:5px;"><b>You:</b> ${text}</div>`;
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  const intentId = document.getElementById("inp-intent-id").value;
+  const faultType = document.getElementById("inp-fault-type").value;
+  const opType = document.getElementById("inp-op-type").value;
+
+  // Make sure Auth exists
+  const custId = document.getElementById("inp-cust-id").value;
+  const orderId = document.getElementById("inp-order-id").value;
+  const authAmt = parseFloat(document.getElementById("inp-auth-amount").value);
+
+  updatePipelineStep("AUTHORIZED");
+  try {
+    await fetch("/authorizations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        intent_id: intentId,
+        operator_id: "OP-DASHBOARD",
+        customer_id: custId,
+        order_id: orderId,
+        operation_type: opType,
+        authorized_amount: authAmt,
+        currency: "INR"
+      })
+    });
+  } catch(e) {}
+
+  chatMessages.innerHTML += `<div style="color:#22c55e;"><b>Agent:</b> Processing proposal...</div>`;
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  updatePipelineStep("PROPOSED");
+  
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        intent_id: intentId,
+        text: text,
+        simulated_fault: faultType !== "NONE" ? faultType : null
+      })
+    });
+    const data = await res.json();
+    
+    const prop = data.proposal;
+    chatMessages.innerHTML += `<div style="color:#3b82f6;"><b>Agent:</b> Extracted: ${prop.operation} ${prop.amount} ${prop.currency} for ${prop.customer_id} (Order ${prop.order_id}). Request ID: ${prop.request_id}</div>`;
+
+    const result = data.result;
+    logTrace(`[Gateway Evaluated] ${result.decision} (${result.reason})`, result.decision === "ALLOW" ? "text-emerald" : "text-rose");
+    logTrace(`Result Detail: ${result.message}`);
+
+    if (result.decision === "BLOCK") {
+      updatePipelineStep("BLOCKED", "blocked");
+      updateDecisionCallout(result.decision, result.reason, result.message, "BLOCKED");
+    } else if (result.decision === "ESCALATE") {
+      updatePipelineStep("ESCALATED", "escalated");
+      updateDecisionCallout(result.decision, result.reason, result.message, "ESCALATED");
+      loadReviewCases();
+    } else {
+      updatePipelineStep("COMPLETED", "completed");
+      updateDecisionCallout(result.decision, result.reason, result.message, "COMPLETED");
+      loadEffectsLedger();
+    }
+    loadAuditLogs();
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  } catch (err) {
+    chatMessages.innerHTML += `<div style="color:#ef4444;"><b>Error:</b> ${err}</div>`;
+  }
+}
+

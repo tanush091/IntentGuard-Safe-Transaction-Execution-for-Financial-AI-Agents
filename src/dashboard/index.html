@@ -138,6 +138,19 @@
               </div>
             </form>
           </div>
+
+          <div class="panel-header" id="llm-chat-header" style="display:none; margin-top:20px;">
+            <h3>Natural Language Chat (Agent)</h3>
+          </div>
+          <div class="panel-body" id="llm-chat-body" style="display:none;">
+             <div id="chat-messages" style="height:150px; overflow-y:auto; border:1px solid #333; padding:10px; margin-bottom:10px; border-radius:4px; font-family:'JetBrains Mono'; font-size:12px; color:#bbb;">
+                Welcome to FinancialAIAgent chat.
+             </div>
+             <div class="form-row" style="display:flex; gap:10px;">
+                 <input type="text" id="chat-input" placeholder="e.g. Refund ₹1500 for C-17 order ORD-204" style="flex:1;" />
+                 <button class="btn-primary" onclick="submitChat()">Send</button>
+             </div>
+          </div>
         </div>
 
         <!-- Right: Real-Time State Machine Visualizer & Trace -->
