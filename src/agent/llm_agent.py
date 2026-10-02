@@ -3,7 +3,9 @@ import uuid
 import os
 import json
 from typing import Optional, Dict, Any
+import httpx
 from src.schemas.types import ProposalCreate, OperationType
+from src.config import settings
 
 class FinancialAIAgent:
     """
@@ -15,7 +17,7 @@ class FinancialAIAgent:
     def __init__(self, agent_id: str = "financial-agent-llm", model_name: str = "gemini-1.5-flash"):
         self.agent_id = agent_id
         self.model_name = model_name
-        self.api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        self.provider = settings.LLM_PROVIDER.lower()
 
     async def parse_and_propose(self, intent_id: str, natural_language_request: str) -> ProposalCreate:
         """
@@ -25,12 +27,23 @@ class FinancialAIAgent:
         extracted = self._rule_based_extract(natural_language_request)
 
         # 2. If API key is present and configured, can query LLM with function calling
-        if self.api_key:
+        if self.provider != "offline":
             try:
                 llm_extracted = await self._query_llm(natural_language_request)
                 if llm_extracted:
-                    extracted = llm_extracted
-            except Exception:
+                    # Validate keys and types
+                    from pydantic import BaseModel
+                    class ExtractionSchema(BaseModel):
+                        customer_id: str
+                        order_id: str
+                        amount: float
+                        currency: str
+                        operation: OperationType
+                    
+                    validated = ExtractionSchema(**llm_extracted)
+                    extracted = validated.model_dump()
+            except Exception as e:
+                print(f"LLM failure or validation error: {e}")
                 pass # Gracefully fall back to rule-based parser
 
         request_id = f"req_{uuid.uuid4().hex[:8]}"
@@ -96,5 +109,47 @@ class FinancialAIAgent:
         }
 
     async def _query_llm(self, text: str) -> Optional[Dict[str, Any]]:
-        # Hook for external LLM API if provided
+        system_prompt = "Extract customer_id, order_id, amount (float), currency (str), operation (REFUND, PAYMENT_AUTHORIZATION, PAYMENT_CANCEL). Return strictly JSON."
+        try:
+            async with httpx.AsyncClient() as client:
+                if self.provider == "gemini":
+                    if not settings.GEMINI_API_KEY: return None
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={settings.GEMINI_API_KEY}"
+                    payload = {
+                        "contents": [{"parts":[{"text": f"{system_prompt}\n\n{text}"}]}],
+                        "generationConfig": {"responseMimeType": "application/json"}
+                    }
+                    resp = await client.post(url, json=payload)
+                    resp.raise_for_status()
+                    result = resp.json()
+                    content = result["candidates"][0]["content"]["parts"][0]["text"]
+                    return json.loads(content)
+                elif self.provider == "openai":
+                    if not settings.OPENAI_API_KEY: return None
+                    url = "https://api.openai.com/v1/chat/completions"
+                    headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+                    payload = {
+                        "model": "gpt-4o-mini",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": text}
+                        ],
+                        "response_format": {"type": "json_object"}
+                    }
+                    resp = await client.post(url, headers=headers, json=payload)
+                    resp.raise_for_status()
+                    return json.loads(resp.json()["choices"][0]["message"]["content"])
+                elif self.provider == "ollama":
+                    url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+                    payload = {
+                        "model": "llama3",
+                        "prompt": f"{system_prompt}\n\n{text}",
+                        "format": "json",
+                        "stream": False
+                    }
+                    resp = await client.post(url, json=payload)
+                    resp.raise_for_status()
+                    return json.loads(resp.json()["response"])
+        except Exception as e:
+            print(f"LLM API Error: {e}")
         return None

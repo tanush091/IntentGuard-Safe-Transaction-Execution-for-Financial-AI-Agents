@@ -35,17 +35,19 @@ Operator / Support Instruction
 - **Rule 3**: Provider effect is the single source of truth. Internal agent memory resets never constitute a transaction reversal.
 
 ## Transaction State Machine
-```text
-AUTHORIZED ──► PROPOSED ──► VALIDATED ──► EXECUTING ──► COMPLETED (Verified)
-                               │              │
-                             BLOCKED          ├──► UNKNOWN ──► RECONCILING
-                                              │                   │
-                                              └──► ESCALATED      ├──► COMPLETED (Found)
-                                                                  ├──► EXECUTING (Retry)
-                                                                  └──► ESCALATED (Discrepancy)
-
-PENDING (Provider) ──► CANCEL_REQUESTED ──► CANCELLED (Verified) | ESCALATED
-```
+| Current State      | Allowed Next States                                          |
+|--------------------|--------------------------------------------------------------|
+| AUTHORIZED         | PROPOSED, BLOCKED                                            |
+| PROPOSED           | VALIDATED, EXECUTING, BLOCKED, COMPLETED                     |
+| VALIDATED          | EXECUTING, BLOCKED, COMPLETED                                |
+| EXECUTING          | COMPLETED, UNKNOWN, CANCEL_REQUESTED, ESCALATED, BLOCKED     |
+| UNKNOWN            | RECONCILING, ESCALATED                                       |
+| RECONCILING        | COMPLETED, EXECUTING, CANCEL_REQUESTED, ESCALATED, UNKNOWN   |
+| CANCEL_REQUESTED   | CANCELLED, ESCALATED                                         |
+| CANCELLED          | (Terminal)                                                   |
+| COMPLETED          | (Terminal)                                                   |
+| BLOCKED            | PROPOSED                                                     |
+| ESCALATED          | COMPLETED, CANCELLED                                         |
 
 ## Folder Structure
 ```
@@ -77,7 +79,7 @@ IntentGuard_Documentation/
 │   ├── agent/          # Scripted and LLM agents
 │   ├── experiments/    # Benchmark generator, baselines, ablations & runner
 │   └── dashboard/      # Web observability interface (HTML, CSS, JS)
-└── tests/              # 11 unit & integration test suites
+└── tests/              # 6 unit & integration test suites
 ```
 
 ## Architectural Invariants

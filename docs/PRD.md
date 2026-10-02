@@ -46,4 +46,4 @@ Build a deterministic transaction-safety gateway that sits between autonomous AI
 2. Zero unauthorized or hallucinated transactions executed at the payment provider.
 3. 100% of detected provider discrepancies escalated to human review with open `ReviewCase` records.
 4. High legitimate completion rate (>80% overall, >95% on legitimate-eligible tasks).
-5. All 11 automated test suites passing with 100% green status.
+5. All 11 automated tests passing across 6 test suites with 100% green status.

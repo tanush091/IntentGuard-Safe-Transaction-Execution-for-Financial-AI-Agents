@@ -53,7 +53,7 @@ class GatewayEngine:
         return auth
 
     async def process_proposal(self, proposal: ProposalCreate, simulated_fault: Optional[FaultType] = None) -> Dict[str, Any]:
-        auth = self.db.query(AuthorizationModel).filter(AuthorizationModel.intent_id == proposal.intent_id).first()
+        auth = self.db.query(AuthorizationModel).filter(AuthorizationModel.intent_id == proposal.intent_id).with_for_update().first()
         if not auth:
             return {
                 "decision": DecisionType.BLOCK,

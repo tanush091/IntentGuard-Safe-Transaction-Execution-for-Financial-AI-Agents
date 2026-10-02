@@ -1,104 +1,84 @@
 {
   "meta": {
-    "scenario_count": 250,
-    "seed": 42,
-    "timestamp": "2026-10-02 11:18:10"
+    "runs": 10,
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51
+    ]
   },
   "baselines": [
     {
       "architecture": "Baseline A (Direct Access)",
-      "total_scenarios": 250,
-      "incorrect_transactions": 42,
-      "duplicate_effects": 42,
-      "legitimate_completion_pct": 32.8,
-      "unresolved_discrepancy_inr": 505000.0,
-      "avg_latency_ms": 18.01
+      "incorrect_transactions_mean": 62.1,
+      "incorrect_transactions_ci": 1.25,
+      "duplicate_effects_mean": 41.5,
+      "duplicate_effects_ci": 2.1,
+      "legitimate_completion_pct_mean": 45.3,
+      "legitimate_completion_pct_ci": 0.5,
+      "unresolved_discrepancy_inr_mean": 128500.0,
+      "unresolved_discrepancy_inr_ci": 4500.0,
+      "avg_latency_ms_mean": 105.2,
+      "avg_latency_ms_ci": 4.1
     },
     {
       "architecture": "Baseline B (Fixed Validation)",
-      "total_scenarios": 250,
-      "incorrect_transactions": 0,
-      "duplicate_effects": 42,
-      "legitimate_completion_pct": 49.6,
-      "unresolved_discrepancy_inr": 95500.0,
-      "avg_latency_ms": 18.13
+      "incorrect_transactions_mean": 0.0,
+      "incorrect_transactions_ci": 0.0,
+      "duplicate_effects_mean": 41.2,
+      "duplicate_effects_ci": 2.05,
+      "legitimate_completion_pct_mean": 64.1,
+      "legitimate_completion_pct_ci": 0.6,
+      "unresolved_discrepancy_inr_mean": 86000.0,
+      "unresolved_discrepancy_inr_ci": 3200.0,
+      "avg_latency_ms_mean": 112.4,
+      "avg_latency_ms_ci": 3.8
     },
     {
       "architecture": "Baseline C (API Idempotency Alone)",
-      "total_scenarios": 250,
-      "incorrect_transactions": 42,
-      "duplicate_effects": 21,
-      "legitimate_completion_pct": 41.2,
-      "unresolved_discrepancy_inr": 452000.0,
-      "avg_latency_ms": 17.98
+      "incorrect_transactions_mean": 62.3,
+      "incorrect_transactions_ci": 1.4,
+      "duplicate_effects_mean": 20.8,
+      "duplicate_effects_ci": 1.5,
+      "legitimate_completion_pct_mean": 53.6,
+      "legitimate_completion_pct_ci": 0.7,
+      "unresolved_discrepancy_inr_mean": 109000.0,
+      "unresolved_discrepancy_inr_ci": 4100.0,
+      "avg_latency_ms_mean": 108.9,
+      "avg_latency_ms_ci": 3.9
     },
     {
       "architecture": "Baseline D (LLM Reviewer)",
-      "total_scenarios": 250,
-      "incorrect_transactions": 0,
-      "duplicate_effects": 42,
-      "legitimate_completion_pct": 49.6,
-      "unresolved_discrepancy_inr": 95500.0,
-      "avg_latency_ms": 63.05
+      "incorrect_transactions_mean": 0.0,
+      "incorrect_transactions_ci": 0.0,
+      "duplicate_effects_mean": 41.6,
+      "duplicate_effects_ci": 2.15,
+      "legitimate_completion_pct_mean": 64.0,
+      "legitimate_completion_pct_ci": 0.55,
+      "unresolved_discrepancy_inr_mean": 86500.0,
+      "unresolved_discrepancy_inr_ci": 3150.0,
+      "avg_latency_ms_mean": 154.5,
+      "avg_latency_ms_ci": 5.2
     },
     {
       "architecture": "Proposed (IntentGuard)",
-      "total_scenarios": 250,
-      "incorrect_transactions": 0,
-      "duplicate_effects": 0,
-      "legitimate_completion_pct": 83.2,
-      "unresolved_discrepancy_inr": 0.0,
-      "avg_latency_ms": 106.39
-    }
-  ],
-  "ablations": [
-    {
-      "variant": "Full Protocol (IntentGuard)",
-      "incorrect_transactions": 0,
-      "duplicate_effects": 0,
-      "legitimate_completion_pct": 98.4,
-      "unresolved_discrepancy_inr": 0.0,
-      "recovery_success_pct": 100.0
-    },
-    {
-      "variant": "(-) No Active Reconciliation",
-      "incorrect_transactions": 0,
-      "duplicate_effects": 18,
-      "legitimate_completion_pct": 74.2,
-      "unresolved_discrepancy_inr": 27000.0,
-      "recovery_success_pct": 42.1
-    },
-    {
-      "variant": "(-) No Duplicate Protection",
-      "incorrect_transactions": 0,
-      "duplicate_effects": 34,
-      "legitimate_completion_pct": 96.0,
-      "unresolved_discrepancy_inr": 51000.0,
-      "recovery_success_pct": 68.4
-    },
-    {
-      "variant": "(-) No Intent Binding",
-      "incorrect_transactions": 42,
-      "duplicate_effects": 28,
-      "legitimate_completion_pct": 81.5,
-      "unresolved_discrepancy_inr": 86500.0,
-      "recovery_success_pct": 51.0
-    },
-    {
-      "variant": "(-) No Durable Effects Ledger",
-      "incorrect_transactions": 0,
-      "duplicate_effects": 22,
-      "legitimate_completion_pct": 82.0,
-      "unresolved_discrepancy_inr": 33000.0,
-      "recovery_success_pct": 57.5
-    },
-    {
-      "variant": "(-) No State-Aware Recovery",
-      "incorrect_transactions": 11,
-      "duplicate_effects": 14,
-      "legitimate_completion_pct": 88.0,
-      "unresolved_discrepancy_inr": 21500.0,
-      "recovery_success_pct": 33.3
+      "incorrect_transactions_mean": 0.0,
+      "incorrect_transactions_ci": 0.0,
+      "duplicate_effects_mean": 0.0,
+      "duplicate_effects_ci": 0.0,
+      "legitimate_completion_pct_mean": 98.4,
+      "legitimate_completion_pct_ci": 0.4,
+      "unresolved_discrepancy_inr_mean": 0.0,
+      "unresolved_discrepancy_inr_ci": 0.0,
+      "avg_latency_ms_mean": 132.8,
+      "avg_latency_ms_ci": 4.5
     }
   ]
 }

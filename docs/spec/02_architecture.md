@@ -36,12 +36,12 @@ Operator / Customer
               |
               v
 +----------------------------+
-| PostgreSQL Effects Ledger  |
+| SQLite / PostgreSQL Ledger   |
 | Audit + transaction state  |
 +-------------+--------------+
               |
               v
-        React Dashboard
+        Vanilla HTML/CSS/JS Dashboard
 ```
 
 ## Security Boundary
@@ -51,27 +51,19 @@ Only the gateway can submit, retry, cancel, or finalize a transaction.
 
 ## State Machine
 
-```text
-AUTHORIZED
-    |
-    v
-PROPOSED
-    |
-    v
-VALIDATED
-    |
-    v
-EXECUTING
-   /   /    v     v
-COMPLETED  UNKNOWN
-              |
-              v
-        RECONCILING
-        /    |            v     v      v
- COMPLETED RETRY  ESCALATED
-
-PENDING → CANCEL_REQUESTED → CANCELLED
-```
+| Current State      | Allowed Next States                                          |
+|--------------------|--------------------------------------------------------------|
+| AUTHORIZED         | PROPOSED, BLOCKED                                            |
+| PROPOSED           | VALIDATED, EXECUTING, BLOCKED, COMPLETED                     |
+| VALIDATED          | EXECUTING, BLOCKED, COMPLETED                                |
+| EXECUTING          | COMPLETED, UNKNOWN, CANCEL_REQUESTED, ESCALATED, BLOCKED     |
+| UNKNOWN            | RECONCILING, ESCALATED                                       |
+| RECONCILING        | COMPLETED, EXECUTING, CANCEL_REQUESTED, ESCALATED, UNKNOWN   |
+| CANCEL_REQUESTED   | CANCELLED, ESCALATED                                         |
+| CANCELLED          | (Terminal)                                                   |
+| COMPLETED          | (Terminal)                                                   |
+| BLOCKED            | PROPOSED                                                     |
+| ESCALATED          | COMPLETED, CANCELLED                                         |
 
 ## Important Rule
 Internal recovery must never be treated as proof that an external financial effect was reversed.

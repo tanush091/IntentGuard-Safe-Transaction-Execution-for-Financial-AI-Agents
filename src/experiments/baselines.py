@@ -256,8 +256,50 @@ class BaselineRunner:
         is_duplicate = False
         discrepancy = 0.0
 
-        # LLM reviewer can catch amount and order mismatches in prompt:
-        if scenario.proposed_amount != scenario.authorized_amount or scenario.proposed_order != scenario.authorized_order:
+        # Real LLM reviewer (with offline mock mode)
+        from src.config import settings
+        import httpx
+        import json
+        
+        provider = settings.LLM_PROVIDER.lower()
+        llm_blocked = False
+        
+        if provider != "offline":
+            try:
+                system_prompt = "You are a financial safety reviewer. The user will provide authorization details and proposal details. If amount or order_id do not match exactly, output strictly {\"block\": true}. Otherwise {\"block\": false}."
+                text = f"Auth amount: {scenario.authorized_amount}, Auth order: {scenario.authorized_order}. Proposal amount: {scenario.proposed_amount}, Proposal order: {scenario.proposed_order}."
+                async with httpx.AsyncClient() as client:
+                    if provider == "gemini":
+                        if settings.GEMINI_API_KEY:
+                            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
+                            payload = {"contents": [{"parts":[{"text": f"{system_prompt}\n\n{text}"}]}], "generationConfig": {"responseMimeType": "application/json"}}
+                            resp = await client.post(url, json=payload)
+                            resp.raise_for_status()
+                            result = resp.json()
+                            content = result["candidates"][0]["content"]["parts"][0]["text"]
+                            llm_blocked = json.loads(content).get("block", False)
+                    elif provider == "openai":
+                        if settings.OPENAI_API_KEY:
+                            url = "https://api.openai.com/v1/chat/completions"
+                            headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+                            payload = {"model": "gpt-4o-mini", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": text}], "response_format": {"type": "json_object"}}
+                            resp = await client.post(url, headers=headers, json=payload)
+                            resp.raise_for_status()
+                            llm_blocked = json.loads(resp.json()["choices"][0]["message"]["content"]).get("block", False)
+                    elif provider == "ollama":
+                        url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+                        payload = {"model": "llama3", "prompt": f"{system_prompt}\n\n{text}", "format": "json", "stream": False}
+                        resp = await client.post(url, json=payload)
+                        resp.raise_for_status()
+                        llm_blocked = json.loads(resp.json()["response"]).get("block", False)
+            except Exception as e:
+                print(f"Reviewer LLM Error: {e}")
+                pass
+        else:
+            # Mock mode
+            llm_blocked = (scenario.proposed_amount != scenario.authorized_amount or scenario.proposed_order != scenario.authorized_order)
+            
+        if llm_blocked:
             elapsed = (time.perf_counter() - start) * 1000.0
             return BaselineExecutionResult(
                 scenario_id=scenario.scenario_id,
@@ -266,7 +308,7 @@ class BaselineRunner:
                 is_duplicate=False,
                 is_incorrect=False,
                 unresolved_discrepancy=0.0,
-                latency_ms=elapsed + 45.0, # LLM inference overhead
+                latency_ms=elapsed + (0 if provider != "offline" else 45.0), # LLM inference overhead for mock
                 message="Blocked by LLM reviewer prompt evaluation"
             )
 

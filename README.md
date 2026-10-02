@@ -40,9 +40,9 @@ The system treats the externally observed financial effect as the source of trut
 - Python
 - FastAPI
 - Pydantic
-- PostgreSQL
+- SQLite default, PostgreSQL via DATABASE_URL
 - SQLAlchemy
-- React
+- Vanilla HTML/CSS/JS
 - pytest
 - Docker Compose
 - Optional: Celery + Redis
@@ -50,3 +50,23 @@ The system treats the externally observed financial effect as the source of trut
 
 ## Research Question
 Can an intent-consistent transaction protocol reduce incorrect and duplicate final financial outcomes under timeouts, crashes, concurrent attempts, and changed retries while preserving legitimate-task completion?
+
+## Getting Started & Running the Dashboard
+
+You can start the IntentGuard Gateway and the Mock Payment Service via Docker Compose. This automatically spins up a PostgreSQL database and exposes the interactive dashboard.
+
+1. Create a `.env` file from the example:
+   ```bash
+   cp .env.example .env
+   ```
+2. (Optional) Set your `LLM_API_KEY` (e.g., `GEMINI_API_KEY` or `OPENAI_API_KEY`) in `.env` if you want to use the live LLM chat panel. Otherwise, it defaults to offline rule-based extraction.
+3. Start the services:
+   ```bash
+   docker-compose up -d
+   ```
+4. Access the Interactive Studio Dashboard at: **http://127.0.0.1:8000**
+
+You can also run the research benchmark suite locally:
+```bash
+python run_multiple_seeds.py
+```

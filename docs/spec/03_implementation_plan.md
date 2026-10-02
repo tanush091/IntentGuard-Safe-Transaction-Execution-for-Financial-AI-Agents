@@ -1,7 +1,7 @@
 # 03 — Implementation Plan
 
 ## Phase 1 — Data Layer
-Create PostgreSQL models for:
+Create SQLite/PostgreSQL models for:
 - authorizations
 - agent_proposals
 - gateway_decisions

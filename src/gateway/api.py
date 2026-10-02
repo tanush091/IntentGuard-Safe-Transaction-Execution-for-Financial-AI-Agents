@@ -128,6 +128,27 @@ async def trigger_cancel_recovery(intent_id: str, provider_tx_id: str, db: Sessi
     success = await RecoveryPolicyEngine.recover_pending_transaction(db, intent_id, provider_tx_id)
     return {"intent_id": intent_id, "provider_tx_id": provider_tx_id, "recovery_successful": success}
 
+from pydantic import BaseModel
+class ChatRequest(BaseModel):
+    intent_id: str
+    text: str
+    simulated_fault: Optional[FaultType] = None
+
+@app.post("/api/chat", tags=["Agent Chat"])
+async def chat_with_agent(req: ChatRequest, db: Session = Depends(get_db)):
+    from src.agent.llm_agent import FinancialAIAgent
+    agent = FinancialAIAgent()
+    proposal = await agent.parse_and_propose(req.intent_id, req.text)
+    engine = GatewayEngine(db)
+    result = await engine.process_proposal(proposal, simulated_fault=req.simulated_fault)
+    return {"proposal": proposal, "result": result}
+
+@app.get("/api/config", tags=["Config"])
+def get_config():
+    from src.config import settings
+    configured = settings.LLM_PROVIDER.lower() != "offline"
+    return {"llm_configured": configured, "provider": settings.LLM_PROVIDER}
+
 # Observability Dashboard Endpoints
 import os
 import json
