@@ -1,0 +1,12 @@
+---
+description: General Development Rules
+globs: *
+---
+# General Rules
+
+- Use strict typing with Pydantic v2 and SQLAlchemy 2.0.
+- Read docs/PRD.md, docs/ARCHITECTURE.md, and docs/MEMORY.md before writing code.
+- Reuse existing components; never duplicate logic.
+- Keep functions small and modular.
+- Do not modify unrelated files.
+- Small, focused, verified commits.

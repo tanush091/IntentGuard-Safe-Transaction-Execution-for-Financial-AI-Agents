@@ -1,0 +1,12 @@
+---
+description: Backend Architecture and Safety Gateway Rules
+globs: src/**/*.py
+---
+# Backend Rules
+
+- The AI Agent (`src/agent/`) must never directly call the payment service (`src/mock_payment/`).
+- All financial execution routes through the Safety Gateway (`src/gateway/`).
+- Database logic belongs strictly in `src/database/models.py` and gateway service engines.
+- Write proposals, validation decisions, and attempts to durable storage before any external network call.
+- Derive provider idempotency keys from `intent_id` (`idem_{intent_id}`) to defeat restart duplicates.
+- Handle timeouts (`UNKNOWN`) via active reconciliation before permitting retries.

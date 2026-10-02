@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: intentguard_db
+    restart: always
+    environment:
+      POSTGRES_USER: intentguard
+      POSTGRES_PASSWORD: intentguard_secret
+      POSTGRES_DB: intentguard_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intentguard -d intentguard_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  payment-service:
+    build: .
+    container_name: intentguard_payment_mock
+    command: uvicorn src.mock_payment.api:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+    restart: on-failure
+
+  gateway:
+    build: .
+    container_name: intentguard_gateway
+    command: uvicorn src.gateway.api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://intentguard:intentguard_secret@postgres:5432/intentguard_db
+      - PAYMENT_SERVICE_URL=http://payment-service:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      payment-service:
+        condition: service_started
+    restart: on-failure
+
+volumes:
+  pgdata:

@@ -1,0 +1,11 @@
+---
+description: Testing and Quality Assurance Rules
+globs: tests/**/*.py
+---
+# Testing Rules
+
+- Organize tests strictly into `tests/unit/`, `tests/integration/`, and `tests/e2e/`.
+- Every feature must have automated test coverage.
+- Run `python -m pytest` after changes and fix failing tests before marking complete.
+- Verify both positive paths and negative failure/fault injection paths.
+- Keep tests isolated using in-memory SQLite fixtures or fresh session teardowns.

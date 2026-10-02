@@ -1,0 +1,11 @@
+---
+description: Security Requirements and Boundary Policies
+globs: *
+---
+# Security Rules
+
+- Never expose API keys or credentials in code or repository commits.
+- Use `.env.example` for secret templates; load values via `src/config.py`.
+- Enforce strict parameter validation on amounts (`0 < amount <= authorized_amount`).
+- Treat AI agents as untrusted callers.
+- Preserve immutable audit logging for all transactions and reconciliation checks.
