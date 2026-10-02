@@ -28,7 +28,7 @@ Baseline implementations.
 LLM agent integration.
 
 ## Milestone 10
-React observability dashboard.
+Vanilla HTML/CSS/JS observability dashboard.
 
 ## Milestone 11
 Ablation and statistical analysis.

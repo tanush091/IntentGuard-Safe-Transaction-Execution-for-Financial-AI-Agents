@@ -40,9 +40,9 @@ The system treats the externally observed financial effect as the source of trut
 - Python
 - FastAPI
 - Pydantic
-- PostgreSQL
+- SQLite default, PostgreSQL via DATABASE_URL
 - SQLAlchemy
-- React
+- Vanilla HTML/CSS/JS
 - pytest
 - Docker Compose
 - Optional: Celery + Redis

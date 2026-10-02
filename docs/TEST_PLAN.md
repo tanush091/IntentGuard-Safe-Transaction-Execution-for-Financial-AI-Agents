@@ -12,31 +12,31 @@ The IntentGuard system is working if and only if:
 
 ## Testing Checklist
 
-### 1. Unit & State Machine Tests (`tests/test_state_machine.py`)
+### 1. Unit & State Machine Tests (`tests/unit/test_state_machine.py`)
 - [x] Legal state transitions (`AUTHORIZED` -> `PROPOSED` -> `VALIDATED` -> `EXECUTING` -> `COMPLETED`)
 - [x] Illegal state transitions raise `InvalidStateTransitionError`
 - [x] Terminal states (`COMPLETED`, `CANCELLED`) cannot be transitioned out of
 
-### 2. Mock Payment Service Tests (`tests/test_mock_payment.py`)
+### 2. Mock Payment Service Tests (`tests/unit/test_mock_payment.py`)
 - [x] Successful refund execution
 - [x] Idempotent replay of identical requests
 - [x] Fault: `TIMEOUT_BEFORE_EXECUTION` (provider has 0 records)
 - [x] Fault: `TIMEOUT_AFTER_EXECUTION` (provider records completed effect, drops network response)
 
-### 3. Gateway Validation Tests (`tests/test_gateway_validation.py`)
+### 3. Gateway Validation Tests (`tests/unit/test_gateway_validation.py`)
 - [x] Exceeding amount is rejected (`AMOUNT_EXCEEDS_AUTHORIZATION`)
 - [x] Mutated order number is rejected (`ORDER_MISMATCH`)
 - [x] Duplicate execution attempt for completed intent is suppressed (`ALREADY_COMPLETED`)
 
-### 4. Reconciliation Engine Tests (`tests/test_reconciliation.py`)
+### 4. Reconciliation Engine Tests (`tests/integration/test_reconciliation.py`)
 - [x] Discovering lost-response effect and resolving `UNKNOWN` to `COMPLETED`
 - [x] Updating durable effects ledger
 
-### 5. Transferability Tests (`tests/test_payment_auth_transferability.py`)
+### 5. Transferability Tests (`tests/integration/test_payment_auth_transferability.py`)
 - [x] Payment authorization hold creation
 - [x] State-aware void/cancellation and provider state verification
 
-### 6. Comprehensive Scenario Tests (`tests/test_scenarios_comprehensive.py`)
+### 6. Comprehensive Scenario Tests (`tests/e2e/test_scenarios_comprehensive.py`)
 - [x] End-to-end execution of all primary failure modes
 
 ### 7. Full Benchmark Suite (`run_benchmark.py`)

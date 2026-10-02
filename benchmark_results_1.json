@@ -2,7 +2,7 @@
   "meta": {
     "scenario_count": 250,
     "seed": 42,
-    "timestamp": "2026-10-02 22:02:09"
+    "timestamp": "2026-10-02 22:01:32"
   },
   "baselines": [
     {
@@ -12,7 +12,7 @@
       "duplicate_effects": 42,
       "legitimate_completion_pct": 32.8,
       "unresolved_discrepancy_inr": 505000.0,
-      "avg_latency_ms": 18.51
+      "avg_latency_ms": 18.41
     },
     {
       "architecture": "Baseline B (Fixed Validation)",
@@ -21,7 +21,7 @@
       "duplicate_effects": 42,
       "legitimate_completion_pct": 49.6,
       "unresolved_discrepancy_inr": 95500.0,
-      "avg_latency_ms": 18.46
+      "avg_latency_ms": 18.41
     },
     {
       "architecture": "Baseline C (API Idempotency Alone)",
@@ -30,7 +30,7 @@
       "duplicate_effects": 21,
       "legitimate_completion_pct": 41.2,
       "unresolved_discrepancy_inr": 452000.0,
-      "avg_latency_ms": 18.42
+      "avg_latency_ms": 18.43
     },
     {
       "architecture": "Baseline D (LLM Reviewer)",
@@ -39,7 +39,7 @@
       "duplicate_effects": 42,
       "legitimate_completion_pct": 49.6,
       "unresolved_discrepancy_inr": 95500.0,
-      "avg_latency_ms": 63.47
+      "avg_latency_ms": 63.43
     },
     {
       "architecture": "Proposed (IntentGuard)",
@@ -48,7 +48,7 @@
       "duplicate_effects": 0,
       "legitimate_completion_pct": 83.2,
       "unresolved_discrepancy_inr": 0.0,
-      "avg_latency_ms": 70.71
+      "avg_latency_ms": 71.71
     }
   ],
   "ablations": [
