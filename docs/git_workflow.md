@@ -59,13 +59,13 @@ git merge --no-ff feature/gateway-validation
 
 When working as a multi-disciplinary research team, tasks are recommended as follows:
 
-| Role / Member | Domain Ownership | Key Responsibilities |
-| :--- | :--- | :--- |
-| **Member 1: Backend & Data** | Backend API & DB | FastAPI app routing, SQLAlchemy models, schema validation, database migrations. |
-| **Member 2: Safety Protocol** | Gateway & State Machine | 10-point safety checks, transactional state machine, idempotency ledger. |
-| **Member 3: Payment Simulator** | Mock Payment & Faults | Mock payment engine, configurable fault injector, timeout and crash simulator. |
-| **Member 4: AI Agent** | Scripted & LLM Layer | Deterministic scripted agent profiles, optional LLM provider adapter, prompt guard. |
-| **Member 5: Frontend Engineer** | Dashboard & Visuals | React dashboard, live state visualizer, transaction log table, review modal. |
-| **Member 6: Research Engineer** | Benchmark & Evaluation | 250+ synthetic scenarios, 4 baselines, 6 ablations, metrics export and charts. |
+| Role / Member | Domain Ownership | Key Responsibilities | Primary Maintainer |
+| :--- | :--- | :--- | :--- |
+| **Backend & Core Engine** | Backend API & DB | FastAPI app routing, SQLAlchemy models, schema validation, database migrations. | U V Tanush (`tanush091`) |
+| **Safety Protocol & Gateway** | Gateway & State Machine | 10-point safety checks, transactional state machine, idempotency ledger. | Narla Sindhuja (`NarlaSindhuja-5`) |
+| **Payment Simulator** | Mock Payment & Faults | Mock payment engine, configurable fault injector, timeout and crash simulator. | U V Tanush (`tanush091`) |
+| **Reconciliation & Recovery** | Active State Reconciliation | Provider state discovery, ledger reconciliation, controlled retries, escalation. | Narla Sindhuja (`NarlaSindhuja-5`) |
+| **AI Agent Layer** | Scripted & LLM Layer | Deterministic scripted agent profiles, optional LLM provider adapter, prompt guard. | U V Tanush (`tanush091`) |
+| **Frontend & Visualization** | Dashboard & Visuals | React dashboard, live state visualizer, transaction log table, review modal. | U V Tanush (`tanush091`) |
+| **Research & Methodology** | Benchmark & Evaluation | 250+ synthetic scenarios, 4 baselines, 6 ablations, metrics export, Wilson intervals. | Narla Sindhuja (`NarlaSindhuja-5`) |
 
-*Note: For smaller teams or solo evaluation, roles can be grouped: (1+2), (3+4), and (5+6).*

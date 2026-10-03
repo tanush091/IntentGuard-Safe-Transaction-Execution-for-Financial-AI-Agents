@@ -279,3 +279,12 @@ Detailed academic and engineering documentation is provided in [`docs/`](docs/):
 - [`references.md`](docs/references.md) — Academic papers, IETF RFCs, and industry standards.
 - [`git_workflow.md`](docs/git_workflow.md) — Git workflow and team role distribution.
 - [`presentation_outline.md`](docs/presentation_outline.md) — Defense slide deck structure.
+
+---
+
+## 9. Team & Contributors
+
+This research project is developed collaboratively:
+- **U V Tanush** ([@tanush091](https://github.com/tanush091)) — Project Architecture, Gateway Engine, Payment Simulator Sandbox, and Frontend Studio.
+- **Narla Sindhuja** ([@NarlaSindhuja-5](https://github.com/NarlaSindhuja-5)) — Safety Protocol Gateway, Active Reconciliation & Recovery Engine, Test Validation Suite, and Experimental Research Methodology.
+

@@ -18,9 +18,7 @@ Thank you for contributing to **IntentGuard: Intent-Consistent Transaction Execu
 3. **Commit Messages**: Write clear, imperative commit messages (e.g., `feat: implement active reconciliation loop`, `test: add invalid state transition safety tests`).
 
 ## Team Roles & Subsystem Division
-Refer to [Git Workflow](docs/git_workflow.md) for branch strategy and role distribution across:
-- Gateway & Safety Protocol
-- Mock Payment Simulator & Fault Injection
-- Scripted & LLM AI Agent Adapters
-- Experiments & Benchmark Runner
-- Observability Dashboard & Frontend
+Refer to [Git Workflow](docs/git_workflow.md) for branch strategy and role distribution:
+- **U V Tanush** (`tanush091`) — Project Architecture, Gateway & Payment Simulator, Core Framework
+- **Narla Sindhuja** (`NarlaSindhuja-5` / `narlasindhuja45@gmail.com`) — Safety Protocol, Reconciliation Recovery Engine, Experimental Methodology & Benchmark Validation
+
