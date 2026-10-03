@@ -22,9 +22,12 @@ async def test_concurrency_stress():
 
     async with httpx.AsyncClient(base_url="http://127.0.0.1:8000") as client:
         # Create auth
-        resp = await client.post("/api/v1/gateway/authorizations", json=auth_payload)
-        # If API is down, we skip
-        if resp.status_code != 200:
+        try:
+            resp = await client.post("/api/v1/gateway/authorizations", json=auth_payload)
+            if resp.status_code != 200:
+                pytest.skip("Gateway API returned non-200. Is docker-compose running?")
+                return
+        except (httpx.ConnectError, httpx.ConnectTimeout):
             pytest.skip("Gateway API not reachable at 127.0.0.1:8000. Is docker-compose running?")
             return
 

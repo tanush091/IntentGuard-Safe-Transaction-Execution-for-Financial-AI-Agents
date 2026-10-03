@@ -1,0 +1,68 @@
+erDiagram
+    INTENTS ||--o{ ATTEMPTS : "has many"
+    INTENTS ||--o{ EFFECTS : "records"
+    INTENTS ||--o{ AUDIT_EVENTS : "tracks"
+    INTENTS ||--o{ REVIEW_CASES : "generates"
+    ATTEMPTS ||--o{ EFFECTS : "produces"
+    ATTEMPTS ||--o{ AUDIT_EVENTS : "triggers"
+
+    INTENTS {
+        string id PK "Business Intent Identifier e.g. INT-001"
+        string operator_id "Authorizing Human Operator ID"
+        string customer_id "Authorized Customer ID"
+        string order_id "Authorized Target Order ID"
+        string operation_type "REFUND or PAYMENT_AUTHORIZE"
+        numeric authorized_amount "Max Authorized Amount"
+        string currency "ISO-4217 Currency Code"
+        string approval_status "Status of Intent"
+        string current_state "FSM State"
+        datetime created_at "UTC Timestamp"
+        datetime updated_at "UTC Timestamp"
+    }
+
+    ATTEMPTS {
+        string id PK "Attempt Unique Identifier"
+        string intent_id FK "References INTENTS.id"
+        int attempt_number "Monotonically increasing counter"
+        json request_payload "Exact JSON sent to provider"
+        string provider_reference "Provider transaction token"
+        string status "SUBMITTED, COMPLETED, UNKNOWN, FAILED"
+        string idempotency_key "Deterministic token"
+        datetime created_at "UTC Timestamp"
+        datetime updated_at "UTC Timestamp"
+    }
+
+    EFFECTS {
+        string id PK "Internal Effect Ledger ID"
+        string intent_id FK "References INTENTS.id"
+        string attempt_id FK "References ATTEMPTS.id"
+        string provider_reference "Provider reference token"
+        string effect_type "REFUND, AUTHORIZATION, REVERSAL"
+        string order_id "Order Identifier"
+        numeric amount "Settled Amount"
+        string currency "ISO Currency"
+        string status "COMPLETED, CANCELLED"
+        datetime observed_at "UTC Timestamp"
+    }
+
+    AUDIT_EVENTS {
+        string id PK "Audit Event UUID"
+        string intent_id FK "References INTENTS.id"
+        string attempt_id FK "References ATTEMPTS.id"
+        string event_type "CHECK_FAILED, PROPOSAL_APPROVED, etc."
+        json event_data "Full snapshot context"
+        string decision "APPROVED, BLOCKED, RECONCILE, ESCALATE"
+        string reason "Human readable justification"
+        datetime created_at "UTC Timestamp"
+    }
+
+    REVIEW_CASES {
+        string id PK "Review Case ID e.g. REV-001"
+        string intent_id FK "References INTENTS.id"
+        string reason "Detailed exception description"
+        string severity "LOW, MEDIUM, HIGH, CRITICAL"
+        string status "OPEN, IN_REVIEW, RESOLVED"
+        datetime created_at "UTC Timestamp"
+        datetime resolved_at "UTC Timestamp"
+        string resolution_notes "Human operator notes"
+    }

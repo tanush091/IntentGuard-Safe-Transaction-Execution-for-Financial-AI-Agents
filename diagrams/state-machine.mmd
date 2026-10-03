@@ -1,0 +1,30 @@
+stateDiagram-v2
+    [*] --> AUTHORIZED: Operator Registers Intent
+    AUTHORIZED --> PROPOSED: AI Generates Proposal
+    PROPOSED --> APPROVED: All 10 Gateway Checks Pass
+    PROPOSED --> BLOCKED: Gateway Check Mismatch
+    
+    APPROVED --> SUBMITTED: Dispatch with Idempotency Key
+    SUBMITTED --> COMPLETED: Provider Settles (200 OK)
+    SUBMITTED --> PENDING: Provider Processing (202 Accepted)
+    SUBMITTED --> FAILED: Provider Rejects (4xx Error)
+    SUBMITTED --> UNKNOWN: Timeout / Network Disconnect
+    
+    PENDING --> COMPLETED: Webhook / Verification Confirms Settlement
+    PENDING --> CANCEL_REQUESTED: Operator or Engine Initiates Reversal
+    
+    UNKNOWN --> RECONCILING: Active Query Provider State
+    RECONCILING --> COMPLETED: Discovered Settled Effect on Provider
+    RECONCILING --> RETRY_ALLOWED: Provider Has Zero Record of Request
+    RECONCILING --> ESCALATED: Unresolvable Discrepancy / Ambiguity
+    
+    RETRY_ALLOWED --> SUBMITTED: Dispatch Attempt N+1
+    
+    CANCEL_REQUESTED --> CANCELLED: Provider Confirms Cancellation
+    CANCEL_REQUESTED --> ESCALATED: Provider Rejects Cancellation
+    
+    BLOCKED --> [*]
+    COMPLETED --> [*]
+    FAILED --> [*]
+    CANCELLED --> [*]
+    ESCALATED --> [*]
