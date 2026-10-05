@@ -1,290 +1,125 @@
-# Intent-Consistent Transaction Execution and Recovery for Financial AI Agents Under Uncertain Outcomes
+# IntentGuard — Intent-Consistent Transaction Execution and Recovery for Financial AI Agents
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg)](https://fastapi.tiangolo.com)
-[![Status: Research Simulation](https://img.shields.io/badge/Status-Research%20Prototype-orange.svg)]()
+> Research prototype. Everything runs against a simulated payment provider with synthetic
+> customers, orders and money. It never connects to a real payment system.
 
-> **Research Summary:**
-> This project is a research prototype that places an intent-consistency and recovery layer between an AI agent and a simulated financial transaction service. It verifies that the AI's proposed action matches the original human authorization and reconciles uncertain outcomes before retrying.
+An AI agent can read a support ticket and propose a refund, but a successful API call does not
+mean the *authorized* operation happened: the agent may pick a near-miss order, change the amount,
+or repeat the refund after a timeout or a restart. IntentGuard sits between the agent and the
+payment provider. It binds every proposal to a durable operator authorization, owns submission and
+retries, verifies what actually happened at the provider, and then completes, retries, cancels or
+escalates based on the observed state.
 
----
-
-## ⚠️ Academic & Simulation Safety Notice
-- **STRICTLY A SIMULATION**: This repository is designed exclusively for academic and computer science research.
-- **ZERO REAL MONEY**: This system **NEVER** connects to live banking systems, UPI networks, card processors, Stripe/Razorpay live production accounts, or real financial accounts.
-- **ISOLATED SANDBOX**: All financial transactions occur within an isolated, deterministic Mock Payment Service.
-- **NO PRODUCTION GUARANTEES**: Results obtained under simulated conditions illustrate research protocol effectiveness but do not guarantee production safety in commercial financial infrastructure.
+**Research question.** Does this protocol reduce incorrect and duplicate final financial outcomes
+under timeouts, crashes, changed retries and concurrency, while still completing legitimate requests?
+The answer, with measured numbers, is in [`experiments/results/latest/summary.md`](experiments/results/latest/summary.md).
 
 ---
 
-## 1. Research Question & Core Principle
+## Architecture
 
-### Research Question
-> **Can an intent-consistent transaction protocol reduce incorrect and duplicate final financial outcomes under timeouts, crashes, changed retries, and controlled network failures while still completing legitimate requests?**
+```
+operator ──authorize──▶ Intent (durable)            agent ──proposal──▶ ┐
+                                                                        ▼
+                ┌──────────────────────── IntentGuard engine ─────────────────────────┐
+                │ decide   checks vs. intent + ledger (locked)  ─▶ REJECTED / DUPLICATE│
+                │ reserve  attempt + stable idempotency key, intent → IN_FLIGHT        │
+                │ execute  provider call (no lock held)                                │
+                │ verify   read back the provider transaction                          │
+                │ absorb   record effect, derive intent state from the ledger          │
+                │ drive    reconcile unknown outcomes · recover discrepancies · retry  │
+                └─────────────────────────────┬───────────────────────────────────────┘
+                                              ▼
+                              payment provider (paysim, over HTTP or in-process)
+```
 
-### The Core Principle
-```
-   ┌──────────────────────────────────────────────────────────────┐
-   │                        CORE PRINCIPLE                        │
-   │  Do not trust only what the AI says it did.                 │
-   │  Verify what actually happened in external financial state.  │
-   └──────────────────────────────────────────────────────────────┘
-```
+| Package | Role |
+|---|---|
+| [`intentguard/`](intentguard/) | The protocol core: domain model and state machine, gateway checks, engine, ledger models, hash-chained audit log, provider port and adapters, ticket→proposal agents |
+| [`paysim/`](paysim/) | Payment-provider simulator: pending settlement, state-dependent cancellation, idempotency keys with parameter fingerprints, eventually consistent search, fault injection, persistent state |
+| [`gateway_api/`](gateway_api/) | FastAPI service for the gateway, with a background reconciliation worker and crash recovery on startup |
+| [`provider_api/`](provider_api/) | FastAPI service exposing paysim as a mock provider (`/v1/refunds`, `/v1/authorizations`, `/v1/faults`, `/v1/ledger`) |
+| [`bench/`](bench/) | Benchmark: seeded scenario generator, agent error model, baselines and ablations, ground-truth oracle, statistics and report |
+| [`frontend/`](frontend/) | React dashboard: live metrics, intent timelines, review queue, audit verification, experiment results |
+| [`tests_intentguard/`](tests_intentguard/) | Specification, ablation, concurrency, crash, property-based safety, component and HTTP tests |
 
-The system never allows an AI agent to directly execute financial transactions:
-```
-Human Authorization
-       │
-       ▼
-Durable Intent Record
-       │
-       ▼
-AI Proposes Structured Action
-       │
-       ▼
-Intent-Consistency Safety Gateway (10 Invariant Checks)
-       │
-       ▼
-Simulated Mock Payment Service
-       │
-       ▼
-External-State Verification & Active Reconciliation
-       │
-       ▼
-Final Verified Resolution
-```
+### Core ideas
+
+- **Four identities kept separate**: the operator's *intent*, the agent's *proposal*, the gateway's *attempt* (one provider call), and the *effect* actually observed at the provider. Intent state is derived from attempts and effects, never asserted.
+- **Gateway checks** (pure functions, [`intentguard/checks.py`](intentguard/checks.py)): customer, order, operation, amount, currency, remaining order balance, operator permission (re-checked at proposal time), already fulfilled, attempt in progress, held for review, attempt budget.
+- **Stable provider idempotency key per intent** (`ig-<intent>-g<generation>`), so a restarted or concurrent agent with a new request ID cannot create a second effect. The generation changes only after a verified reversal.
+- **Reconciliation with an absence window**: after a timeout the attempt is `UNKNOWN`. "Not found at the provider" counts as evidence of no effect only after `absence_window_s`, because provider search is eventually consistent. If the provider cannot be queried, the intent is held for review rather than retried.
+- **State-aware recovery**: a pending refund, or an authorization hold, with the wrong amount, order or customer is cancelled *and the cancellation is verified*. A completed refund cannot be reversed, so it is escalated with the unresolved amount. Nothing is ever reported as reversed without the provider confirming it.
+- **Database-level guarantees**: at most one live intended effect per intent (partial unique index), one effect row per provider transaction, and an append-only, hash-chained audit log enforced by triggers.
+- **Crash safety**: attempts are persisted before the provider call. After a restart, attempts left `SUBMITTING` by the previous process become `UNKNOWN` and are reconciled.
+
+State machine: [`intentguard/domain.py`](intentguard/domain.py) (`TRANSITIONS`).
 
 ---
 
-## 2. System Architecture
+## Running it
 
-```mermaid
-graph TD
-    OP[Human Operator] -->|1. Authorizes Bounds| DIR[(Durable Intent Record)]
-    DIR -->|2. Reads Intent Context| AGT[AI Agent: Scripted / LLM]
-    AGT -->|3. Proposes Action JSON| GW{Safety Gateway}
-    
-    GW -->|Check Mismatch| BLK[BLOCKED: Audit Logged]
-    GW -->|Approved: 10 Checks Pass| ATT[(Record Attempt)]
-    
-    ATT -->|4. Dispatch with Idempotency Key| MPS[Mock Payment Service]
-    MPS -->|5. Return Immediate Response| RES{Read External State}
-    
-    RES -->|200 OK: Exact Match| CMP[COMPLETED: Effect Recorded]
-    RES -->|Timeout / Lost Packet| UNK[UNKNOWN: Attempt Logged]
-    RES -->|Corrupted / Unexpected| REC_ERR[CANCEL / ESCALATE Review]
-    
-    UNK -->|6. Query External State| REC[Active Reconciliation]
-    REC -->|Query by Order & Provider Ref| MPS
-    REC -->|Effect Verified Settled| CMP
-    REC -->|Zero Effect Confirmed| RET[Controlled Retry Permitted]
-    RET -->|Increment Attempt N+1| ATT
-```
-
----
-
-## 3. The 10 Invariant Safety Checks
-
-Before any execution attempt is dispatched, the Safety Gateway enforces:
-1. **Customer Check**: Does `proposal.customer_id == intent.customer_id`?
-2. **Order Check**: Does `proposal.order_id == intent.order_id`?
-3. **Operation Check**: Is the proposed operation authorized (e.g. `REFUND`)?
-4. **Amount Check**: Does the proposed amount match authorized limits?
-5. **Currency Check**: Does the ISO-4217 currency match (e.g., `INR`)?
-6. **Operator Authorization**: Is the authorizing operator active and permitted?
-7. **Duplicate Effect Check**: Has this intent already settled an effect in the ledger?
-8. **Concurrent Attempt Check**: Is another attempt for this intent currently in flight?
-9. **Existing Provider Effect Check**: Does the provider already report a settled effect for this order?
-10. **State Machine Validity**: Is the state transition permitted by the formal transaction FSM?
-
----
-
-## 4. Repository Structure
-
-```
-financial-ai-safety/
-├── README.md                          # Main project guide & setup
-├── LICENSE                            # MIT License with research notice
-├── .gitignore                         # Git exclusion rules
-├── .env.example                       # Environment configuration template
-├── docker-compose.yml                 # Multi-service container specification
-├── Makefile                           # Automated build & test tasks
-│
-├── backend/                           # FastAPI Safety Gateway Backend
-│   ├── app/
-│   │   ├── main.py                    # Gateway app entrypoint
-│   │   ├── config.py                  # Pydantic settings
-│   │   ├── api/                       # API routes (intents, proposals, reviews)
-│   │   ├── models/                    # SQLAlchemy ORM models
-│   │   ├── schemas/                   # Pydantic validation schemas
-│   │   ├── services/                  # Business logic (gateway, recon, recovery)
-│   │   ├── agents/                    # Scripted & LLM agent implementations
-│   │   ├── state_machine/             # Formal finite state machine
-│   │   └── db/                        # Database connection & migrations
-│   └── tests/                         # Unit, integration, safety & recovery tests
-│
-├── mock-payment-service/              # Standalone Mock Payment Simulator
-│   ├── app/
-│   │   ├── main.py                    # Mock simulator entrypoint
-│   │   ├── routes/                    # Endpoints (/refunds, /authorizations, /faults)
-│   │   └── services/                  # Settlement engine & fault injector
-│   └── tests/                         # Mock service verification tests
-│
-├── frontend/                          # Modern React + Vite Observability Dashboard
-│   ├── src/
-│   │   ├── components/                # Glassmorphic cards, charts, logs
-│   │   ├── pages/                     # Dashboard, Explorer, Experiments
-│   │   └── App.jsx                    # Root React component
-│   └── package.json                   # Dependencies (React, Recharts, Lucide)
-│
-├── experiments/                       # Benchmark & Evaluation Suite
-│   ├── scenarios/                     # 250 reproducible synthetic test cases
-│   ├── runners/                       # Benchmark & ablation execution runners
-│   ├── baselines/                     # 4 comparative baseline architectures
-│   └── results/                       # Exported benchmark metrics (JSON/CSV)
-│
-├── docs/                              # 19 Academic & Architecture Documents
-├── diagrams/                          # Architecture, sequence & state machine diagrams
-└── scripts/                           # Demo, benchmark & seeding CLI tools
-```
-
----
-
-## 5. Step-by-Step Setup Guide (Windows / PowerShell / VS Code)
-
-Follow these exact steps in VS Code terminal on Windows.
-
-### Prerequisites
-1. **Python 3.12+**: Download and install from [python.org](https://www.python.org/) (ensure "Add python.exe to PATH" is checked).
-2. **Node.js 18+**: Download and install from [nodejs.org](https://nodejs.org/).
-3. **Git**: Download and install from [git-scm.com](https://git-scm.com/).
-4. *(Optional)* **Docker Desktop**: If using containerized PostgreSQL. (SQLite is used by default for zero-setup local execution).
-
----
-
-### Step 1: Clone the Repository & Open in VS Code
-```powershell
-git clone https://github.com/tanush091/IntentGuard-Safe-Transaction-Execution-for-Financial-AI-Agents.git
-cd IntentGuard-Safe-Transaction-Execution-for-Financial-AI-Agents
-code .
-```
-
-### Step 2: Create and Activate Python Virtual Environment
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-*(If PowerShell restricts script execution, run: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`)*
-
-### Step 3: Install Backend Dependencies
-```powershell
-python -m pip install --upgrade pip
+```bash
 pip install -r requirements.txt
+
+# terminal 1 — mock provider
+python -m uvicorn provider_api.main:app --port 8001
+# terminal 2 — gateway (seeds demo operators/orders: ORD-204, ORD-240, ORD-2041 …)
+python -m uvicorn gateway_api.main:app --port 8000
+# terminal 3 — dashboard on http://localhost:3000
+cd frontend && npm install && npm run dev
 ```
 
-### Step 4: Configure Environment Variables
-```powershell
-Copy-Item .env.example .env
-```
-*(SQLite is configured by default in `.env`. No database server installation required).*
+On Windows, `start.bat` launches all three. `docker compose up --build` runs the same stack with PostgreSQL.
+Set `PAYMENT_PROVIDER=inprocess` to run the gateway without the provider service.
 
-### Step 5: Start the Mock Payment Service Simulator (Port 8001)
-Open a new PowerShell terminal:
-```powershell
-.\.venv\Scripts\Activate.ps1
-uvicorn mock-payment-service.app.main:app --host 127.0.0.1 --port 8001 --reload
-```
-Verify at: [http://127.0.0.1:8001/health](http://127.0.0.1:8001/health)
+Agent endpoint: `POST /api/intents/{id}/agent` extracts a proposal from the intent's ticket, using
+the offline rule extractor or an LLM when `LLM_PROVIDER` is set (see `.env.example`).
+Structured proposals go to `POST /api/intents/{id}/proposals`. API docs: http://localhost:8000/docs.
 
-### Step 6: Start the IntentGuard Gateway Backend (Port 8000)
-Open a second PowerShell terminal:
-```powershell
-.\.venv\Scripts\Activate.ps1
-uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-Verify at: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) and interactive Swagger docs at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+## Tests
 
-### Step 7: Start the React Frontend Dashboard (Port 3000)
-Open a third terminal:
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-Open your browser at: [http://localhost:3000](http://localhost:3000).
-
----
-
-## 6. Running Tests, Demos & Research Benchmarks
-
-### Execute Test Suite
-```powershell
-pytest -v backend/tests/
+```bash
+python -m pytest            # 42 tests, about 1 minute
 ```
 
-### Run the Interactive Terminal Demo
-Demonstrates all 6 primary research scenarios in terminal output:
-```powershell
-python scripts/run_demo.py
-```
-1. **Demo 1**: Correct refund → Approved → Completed.
-2. **Demo 2**: Wrong amount (₹15,000 vs authorized ₹1,500) → Blocked.
-3. **Demo 3**: Wrong order (`ORD-240` vs authorized `ORD-204`) → Blocked.
-4. **Demo 4**: Network timeout after execution → Reconciled → Completed (zero duplicate).
-5. **Demo 5**: Agent restart / duplicate attempt → Prevented.
-6. **Demo 6**: Inconsistent effect observed → Cancelled / Escalated.
+Includes one test per row of the specification's behaviour table; a test per ablation proving the
+component changes behaviour in the scenario it exists for (including a deterministic two-agent race);
+concurrency (2/4/8 agents → exactly one effect); gateway crashes at both crash points; Hypothesis
+property tests over random faults, wrong proposals, crashes and restarts; and end-to-end HTTP tests
+through the real provider API.
 
-### Run Empirical Research Benchmark & Ablations
-```powershell
-python scripts/run_experiments.py --seed 42 --scenarios 250
+## Reproducing the experiment
+
+```bash
+python -m bench run --seeds 10 --start-seed 42 --scenarios 300   # ~15 min on 8 cores
+python -m bench run --seeds 2 --scenarios 60                     # quick check
+python -m bench run --llm-reviewer                               # baseline D with a real LLM
 ```
 
----
+Output goes to `experiments/results/<run_id>/` and `experiments/results/latest/`:
+`summary.md` (tables), `summary.json` (served at `/api/experiments/latest` and shown in the
+dashboard), and `scenarios.csv` (one row per arm × seed × scenario).
 
-## 7. Comparative Baselines & Ablation Studies
+How the benchmark avoids the usual traps:
 
-| Baseline / Model | Description | Primary Vulnerability |
-| :--- | :--- | :--- |
-| **Baseline A: Direct Agent** | AI directly invokes payment endpoints | Severe hallucinations & duplicate retries |
-| **Baseline B: Fixed Validation** | Static schema validator alone | Ignores intent bounds; blind to network drops |
-| **Baseline C: Idempotency Alone** | Client idempotency keys without intent | Agent restart creates new keys, triggering duplicates |
-| **Baseline D: LLM Reviewer** | Second LLM checks proposals | Non-deterministic, high latency, blind to network timeouts |
-| **Proposed: IntentGuard** | Intent record + Gateway + State Machine + Reconciliation | **Eliminates duplicate & incorrect payouts (0.0%)** |
+- **The seed controls the scenario mix**, not just the IDs. There are 30 categories in 6 families: clean, agent error, provider fault, runtime (crash/restart/concurrency), payment authorization, governance.
+- **Near-miss identifiers** (ORD-2041 / ORD-2014 / ORD-2401, with the same or a different customer) and realistic agent errors (×10 amounts, rupee/paisa confusion, wrong currency). Errors are either transient or persistent.
+- **Identical agent behaviour for every arm.** The agent runtime retries on errors and re-proposes after rejections, the same way for all architectures.
+- **One oracle for every arm**, reading the provider's ground-truth ledger after a 900 s settlement horizon ([`bench/scoring.py`](bench/scoring.py)). An arm's own bookkeeping is used only to detect *misreports*.
+- **Real ablations** are configuration switches on the engine ([`intentguard/config.py`](intentguard/config.py)). They include combined ablations, because several safeguards back each other up.
+- **Real concurrency** (threads) and real crash injection at two points in the engine.
 
----
+## Limitations
 
-## 8. Research Documentation Directory
+- The provider is a simulator modelled on documented provider behaviour; it is not a real provider sandbox.
+- The baseline agent's errors come from an explicit error model. Baseline D's offline reviewer reuses the deterministic ticket extractor, which is an optimistic stand-in for an LLM reviewer; run with `--llm-reviewer` for a real one.
+- Experiments use SQLite (shared-cache in-memory). PostgreSQL is supported by the code and Docker setup but was not exercised by the automated tests.
+- Latency figures are in-process wall-clock times and say nothing about production performance.
 
-Detailed academic and engineering documentation is provided in [`docs/`](docs/):
-- [`01_project_overview.md`](docs/01_project_overview.md) — High-level summary and vision.
-- [`02_problem_statement.md`](docs/02_problem_statement.md) — The triad of financial AI risks.
-- [`03_system_architecture.md`](docs/03_system_architecture.md) — Deep architectural walkthrough.
-- [`04_workflow.md`](docs/04_workflow.md) — End-to-end 8-stage transaction lifecycle.
-- [`05_state_machine.md`](docs/05_state_machine.md) — Formal Finite State Machine transitions.
-- [`06_database_design.md`](docs/06_database_design.md) — Relational schema & append-only ledgers.
-- [`07_api_documentation.md`](docs/07_api_documentation.md) — REST API endpoint schemas.
-- [`08_ai_agent.md`](docs/08_ai_agent.md) — Scripted & LLM agent providers.
-- [`09_safety_gateway.md`](docs/09_safety_gateway.md) — The 10 invariant validation checks.
-- [`10_reconciliation.md`](docs/10_reconciliation.md) — Query-based active reconciliation algorithm.
-- [`11_fault_injection.md`](docs/11_fault_injection.md) — Simulated network failures and delays.
-- [`12_experimental_methodology.md`](docs/12_experimental_methodology.md) — Benchmark protocol & formulas.
-- [`13_baselines.md`](docs/13_baselines.md) — 4 baseline system specifications.
-- [`14_ablation_study.md`](docs/14_ablation_study.md) — 6-part component isolation framework.
-- [`15_market_and_real_world_applications.md`](docs/15_market_and_real_world_applications.md) — Industry domains and gap analysis.
-- [`16_scope_and_future_work.md`](docs/16_scope_and_future_work.md) — Research boundaries and production roadmap.
-- [`17_limitations.md`](docs/17_limitations.md) — Threats to validity and assumptions.
-- [`18_security_and_ethics.md`](docs/18_security_and_ethics.md) — Threat model, defense-in-depth, and ethics.
-- [`19_viva_questions.md`](docs/19_viva_questions.md) — 32 oral exam questions and concise answers.
-- [`references.md`](docs/references.md) — Academic papers, IETF RFCs, and industry standards.
-- [`git_workflow.md`](docs/git_workflow.md) — Git workflow and team role distribution.
-- [`presentation_outline.md`](docs/presentation_outline.md) — Defense slide deck structure.
+## Legacy code
 
----
-
-## 9. Team & Contributors
-
-This research project is developed collaboratively:
-- **U V Tanush** ([@tanush091](https://github.com/tanush091)) — Project Architecture, Gateway Engine, Payment Simulator Sandbox, and Frontend Studio.
-- **Narla Sindhuja** ([@NarlaSindhuja-5](https://github.com/NarlaSindhuja-5)) — Safety Protocol Gateway, Active Reconciliation & Recovery Engine, Test Validation Suite, and Experimental Research Methodology.
-
+`src/`, `backend/`, `mock-payment-service/`, `tests/`, `run_benchmark.py`, `run_multiple_seeds.py`,
+`benchmark_results*.json`, `benchmark_summary.md`, `failure_analysis.md` and `pytest_output.txt` belong to the earlier
+prototype and are no longer used. Their published numbers were not produced by a measured run
+(`run_multiple_seeds.py` wrote fixed values) and must not be cited. They can be deleted.

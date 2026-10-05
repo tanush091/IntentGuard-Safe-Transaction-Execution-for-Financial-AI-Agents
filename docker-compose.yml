@@ -1,10 +1,6 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: intentguard_db
-    restart: always
     environment:
       POSTGRES_USER: intentguard
       POSTGRES_PASSWORD: intentguard_secret
@@ -17,48 +13,45 @@ services:
       test: ["CMD-SHELL", "pg_isready -U intentguard -d intentguard_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  mock-payment-service:
+  provider:
     build:
       context: .
-      dockerfile: ./mock-payment-service/Dockerfile
-    container_name: intentguard_mock_payment
+      dockerfile: deploy/provider.Dockerfile
+    environment:
+      PAYSIM_STATE_PATH: /data/paysim_state.json
+      PAYSIM_SETTLE_DELAY_S: "3"
+    volumes:
+      - paysim:/data
     ports:
       - "8001:8001"
-    environment:
-      - PORT=8001
-      - HOST=0.0.0.0
-    restart: on-failure
 
-  backend:
+  gateway:
     build:
       context: .
-      dockerfile: ./backend/Dockerfile
-    container_name: intentguard_backend
-    ports:
-      - "8000:8000"
+      dockerfile: deploy/gateway.Dockerfile
     environment:
-      - DATABASE_URL=postgresql://intentguard:intentguard_secret@postgres:5432/intentguard_db
-      - PAYMENT_SERVICE_URL=http://mock-payment-service:8001
-      - ENVIRONMENT=production
+      DATABASE_URL: postgresql+psycopg://intentguard:intentguard_secret@postgres:5432/intentguard_db
+      PAYMENT_PROVIDER: http
+      PAYMENT_SERVICE_URL: http://provider:8001
+      CORS_ORIGINS: http://localhost:3000
     depends_on:
       postgres:
         condition: service_healthy
-      mock-payment-service:
+      provider:
         condition: service_started
-    restart: on-failure
+    ports:
+      - "8000:8000"
 
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
-    container_name: intentguard_frontend
+    depends_on:
+      - gateway
     ports:
       - "3000:80"
-    depends_on:
-      - backend
-    restart: on-failure
 
 volumes:
   pgdata:
+  paysim:

@@ -1,29 +1,15 @@
 @echo off
+setlocal EnableExtensions
 title IntentGuard Stopper
 cd /d "%~dp0"
 
-echo ==============================================================================
-echo                      STOPPING INTENTGUARD SERVICES
-echo ==============================================================================
-echo.
+echo Stopping IntentGuard services...
 
-echo Stopping services running on ports 8000, 8001, and 3000...
+:: Only IntentGuard processes are stopped: the windows opened by start.bat (with their
+:: child processes) and any IntentGuard uvicorn/vite process started some other way.
+:: Other programs using ports 3000/8000/8001 are left alone.
+taskkill /F /T /FI "WINDOWTITLE eq IntentGuard - *" >nul 2>&1
+powershell -NoProfile -Command "$root=(Resolve-Path '.').Path; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and ($_.CommandLine -match 'uvicorn\s+(gateway_api|provider_api)\.main:app' -or $_.CommandLine -like ('*' + $root + '\frontend\*vite*')) } | ForEach-Object { Write-Host ('  stopping PID {0}' -f $_.ProcessId); Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8000" ^| findstr "LISTENING"') do (
-    echo Terminating PID %%a on port 8000...
-    taskkill /F /PID %%a >nul 2>&1
-)
-
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8001" ^| findstr "LISTENING"') do (
-    echo Terminating PID %%a on port 8001...
-    taskkill /F /PID %%a >nul 2>&1
-)
-
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":3000" ^| findstr "LISTENING"') do (
-    echo Terminating PID %%a on port 3000...
-    taskkill /F /PID %%a >nul 2>&1
-)
-
-echo.
 echo All IntentGuard services stopped.
-pause
+ping -n 3 127.0.0.1 >nul

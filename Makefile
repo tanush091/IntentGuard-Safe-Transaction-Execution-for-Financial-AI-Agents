@@ -1,41 +1,43 @@
-# Makefile for IntentGuard Research Prototype
-# Supports standard research workflows and local execution
+# IntentGuard research prototype
 
 PYTHON ?= python
-VENV_PYTHON = .venv/bin/python
-VENV_PY_WIN = .venv\Scripts\python.exe
 
-.PHONY: help venv install test run-backend run-mock run-frontend demo benchmark clean
+.PHONY: help install test test-fast run-provider run-gateway run-frontend benchmark benchmark-quick up clean
 
 help:
-	@echo "Available commands:"
-	@echo "  make install        Install backend and test dependencies"
-	@echo "  make test           Run all unit, integration, and safety tests"
-	@echo "  make run-backend    Start the IntentGuard Gateway Backend (port 8000)"
-	@echo "  make run-mock       Start the Mock Payment Service (port 8001)"
-	@echo "  make run-frontend   Start the React Frontend dashboard"
-	@echo "  make demo           Execute the end-to-end interactive terminal demo"
-	@echo "  make benchmark      Execute the 250+ scenario empirical benchmark"
-	@echo "  make clean          Clean cache files and test artifacts"
+	@echo "make install        Install Python dependencies"
+	@echo "make test           Run the full test suite (incl. property-based safety tests)"
+	@echo "make run-provider   Start the mock payment provider on :8001"
+	@echo "make run-gateway    Start the IntentGuard gateway on :8000"
+	@echo "make run-frontend   Start the React dashboard on :3000"
+	@echo "make benchmark      Full experiment: all arms x 10 seeds x 300 scenarios"
+	@echo "make benchmark-quick  Small run for a quick check"
+	@echo "make up             docker compose up --build"
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
 
 test:
-	pytest -v tests/
+	$(PYTHON) -m pytest -q
 
-run-backend:
-	uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+run-provider:
+	$(PYTHON) -m uvicorn provider_api.main:app --host 127.0.0.1 --port 8001
 
-run-mock:
-	uvicorn mock-payment-service.app.main:app --host 127.0.0.1 --port 8001 --reload
+run-gateway:
+	$(PYTHON) -m uvicorn gateway_api.main:app --host 127.0.0.1 --port 8000
 
-demo:
-	$(PYTHON) scripts/run_demo.py
+run-frontend:
+	cd frontend && npm install && npm run dev
 
 benchmark:
-	$(PYTHON) scripts/run_experiments.py
+	$(PYTHON) -m bench run --seeds 10 --start-seed 42 --scenarios 300
+
+benchmark-quick:
+	$(PYTHON) -m bench run --seeds 2 --scenarios 60 --out experiments/results/quick
+
+up:
+	docker compose up --build
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
-	rm -rf .pytest_cache .coverage htmlcov
+	rm -rf .pytest_cache .hypothesis

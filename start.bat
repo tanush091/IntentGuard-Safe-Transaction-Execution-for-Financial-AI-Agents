@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableExtensions
 title IntentGuard Launcher
 cd /d "%~dp0"
 
@@ -7,49 +8,126 @@ echo                      STARTING INTENTGUARD SERVICES
 echo ==============================================================================
 echo.
 
-:: 1. Check for .env file
+:: ---------------------------------------------------------------- 1. config
 if not exist ".env" (
     echo [INFO] Creating .env from .env.example...
     copy .env.example .env >nul
 )
 
-:: 2. Check for virtual environment activation script
-set "VENV_ACTIVATE="
-if exist ".venv\Scripts\activate.bat" (
-    set "VENV_ACTIVATE=call .venv\Scripts\activate.bat && "
-    echo [INFO] Detected virtual environment: .venv
+:: The old prototype's database (intentguard.db) has an incompatible schema.
+findstr /B /C:"DATABASE_URL=sqlite:///./intentguard.db" .env >nul 2>&1
+if not errorlevel 1 (
+    echo [INFO] Pointing DATABASE_URL in .env at intentguard_gateway.db ^(old file left untouched^)
+    powershell -NoProfile -Command "$p=(Resolve-Path '.env').Path; $c=[IO.File]::ReadAllLines($p) -replace '^DATABASE_URL=sqlite:///\./intentguard\.db$','DATABASE_URL=sqlite:///./intentguard_gateway.db'; [IO.File]::WriteAllLines($p,$c)"
 )
 
-:: 3. Start Mock Payment Service Sandbox (Port 8001)
-echo [1/3] Starting Mock Payment Service Sandbox on port 8001...
-start "IntentGuard - Mock Payment Service (Port 8001)" cmd /k "cd /d "%~dp0" && %VENV_ACTIVATE%python -m uvicorn mock-payment-service.app.main:app --host 127.0.0.1 --port 8001 --reload"
+:: ------------------------------------------------------------- 2. python env
+set "VENV_ACTIVATE="
+if exist ".venv\Scripts\activate.bat" (
+    call .venv\Scripts\activate.bat
+    set "VENV_ACTIVATE=call .venv\Scripts\activate.bat && "
+    echo [INFO] Using virtual environment .venv
+)
 
-timeout /t 2 /nobreak >nul
+python -c "import fastapi, uvicorn, sqlalchemy, httpx, numpy, pydantic_settings" >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] Installing Python dependencies...
+    python -m pip install -r requirements.txt || goto :fail
+)
 
-:: 4. Start IntentGuard Safety Gateway Backend (Port 8000)
-echo [2/3] Starting IntentGuard Gateway Backend on port 8000...
-start "IntentGuard - Gateway Backend (Port 8000)" cmd /k "cd /d "%~dp0" && %VENV_ACTIVATE%python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload"
+if not exist "frontend\node_modules" (
+    echo [INFO] Installing dashboard dependencies...
+    pushd frontend
+    call npm install || (popd & goto :fail)
+    popd
+)
 
-timeout /t 2 /nobreak >nul
+:: ------------------------------- 3. stop a previous IntentGuard run, check ports
+call :stop_all quiet
+call :require_free 8001 || goto :fail
+call :require_free 8000 || goto :fail
 
-:: 5. Start React Frontend Dashboard (Port 3000)
-echo [3/3] Starting React Frontend Dashboard on port 3000...
-start "IntentGuard - Frontend Dashboard (Port 3000)" cmd /k "cd /d "%~dp0frontend" && npm run dev"
+:: The dashboard uses 3000, or the next free port if another app already has it.
+set "DASH_PORT="
+for /f %%p in ('powershell -NoProfile -Command "foreach($p in 3000..3020){ if(-not (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)){ $p; break } }"') do set "DASH_PORT=%%p"
+if not defined DASH_PORT (
+    echo [ERROR] No free port between 3000 and 3020 for the dashboard.
+    goto :fail
+)
+if not "%DASH_PORT%"=="3000" echo [INFO] Port 3000 is used by another program; the dashboard will use port %DASH_PORT%.
 
-timeout /t 3 /nobreak >nul
+:: ---------------------------------------------------------------- 4. launch
+echo [1/3] Starting mock payment provider on port 8001...
+start "IntentGuard - Provider (8001)" cmd /k "cd /d "%~dp0" && %VENV_ACTIVATE%python -m uvicorn provider_api.main:app --host 127.0.0.1 --port 8001"
+call :wait_for http://127.0.0.1:8001/health "payment provider" || goto :fail
 
-:: 6. Launch browser to dashboard
+echo [2/3] Starting IntentGuard gateway on port 8000...
+start "IntentGuard - Gateway (8000)" cmd /k "cd /d "%~dp0" && %VENV_ACTIVATE%python -m uvicorn gateway_api.main:app --host 127.0.0.1 --port 8000"
+call :wait_for http://127.0.0.1:8000/health "gateway" || goto :fail
+
+echo [3/3] Starting dashboard on port %DASH_PORT%...
+start "IntentGuard - Dashboard (%DASH_PORT%)" cmd /k "cd /d "%~dp0frontend" && npm run dev -- --port %DASH_PORT% --strictPort"
+call :wait_for http://localhost:%DASH_PORT% "dashboard" || goto :fail
+
 echo.
 echo ==============================================================================
-echo  All 3 services launched successfully!
-echo   - Frontend Dashboard:      http://localhost:3000
-echo   - Gateway API Docs:        http://127.0.0.1:8000/docs
-echo   - Mock Payment Simulator:  http://127.0.0.1:8001/docs
+echo  All services are running:
+echo    Dashboard ............ http://localhost:%DASH_PORT%
+echo    Gateway API docs ..... http://127.0.0.1:8000/docs
+echo    Payment provider ..... http://127.0.0.1:8001/docs
 echo ==============================================================================
-echo.
-echo Opening browser at http://localhost:3000 ...
-start http://localhost:3000
+start "" http://localhost:%DASH_PORT%
 
 echo.
-echo To stop services, close the 3 command prompt windows or run stop.bat.
-pause
+echo  Press any key in THIS window to stop all IntentGuard services.
+pause >nul
+call :stop_all
+echo All IntentGuard services stopped.
+ping -n 3 127.0.0.1 >nul
+exit /b 0
+
+:fail
+echo.
+echo [ERROR] Startup failed. See the messages above and the service windows.
+echo Press any key to stop whatever was started.
+pause >nul
+call :stop_all
+exit /b 1
+
+:: ============================================================== subroutines
+
+:wait_for
+:: %1 = URL, %2 = name. Waits up to 60 seconds for an HTTP response.
+set /a _tries=0
+:wait_loop
+curl -s -o nul "%~1" >nul 2>&1
+if not errorlevel 1 (
+    echo       %~2 is up.
+    exit /b 0
+)
+set /a _tries+=1
+if %_tries% geq 60 (
+    echo [ERROR] %~2 did not respond at %~1 within 60 seconds.
+    exit /b 1
+)
+ping -n 2 127.0.0.1 >nul
+goto :wait_loop
+
+:require_free
+:: Fails (without killing anything) if another program is listening on port %1.
+set "_owner="
+for /f "delims=" %%o in ('powershell -NoProfile -Command "$c=Get-NetTCPConnection -LocalPort %1 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if($c){ $p=Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue; '{0} (PID {1})' -f $p.ProcessName,$c.OwningProcess }"') do set "_owner=%%o"
+if defined _owner (
+    echo [ERROR] Port %1 is already used by %_owner%. Close that program and run start.bat again.
+    exit /b 1
+)
+exit /b 0
+
+:stop_all
+:: Stops only IntentGuard processes: the windows start.bat opened (with their child
+:: processes), plus any IntentGuard uvicorn/vite process started some other way.
+:: Other programs are never touched, even if they use the same ports.
+if /i not "%~1"=="quiet" echo Stopping IntentGuard services...
+taskkill /F /T /FI "WINDOWTITLE eq IntentGuard - *" >nul 2>&1
+powershell -NoProfile -Command "$root=(Resolve-Path '.').Path; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and ($_.CommandLine -match 'uvicorn\s+(gateway_api|provider_api)\.main:app' -or $_.CommandLine -like ('*' + $root + '\frontend\*vite*')) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+exit /b 0

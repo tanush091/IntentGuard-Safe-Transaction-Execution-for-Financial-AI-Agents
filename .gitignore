@@ -43,3 +43,10 @@ build/
 
 # Experiment generated temp files
 experiments/results/temp/
+
+# Simulator state and benchmark scratch
+paysim_state.json
+paysim_state.json.tmp
+*.db-wal
+*.db-shm
+.hypothesis/
