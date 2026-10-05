@@ -111,25 +111,32 @@ class FinancialAIAgent:
     async def _query_llm(self, text: str) -> Optional[Dict[str, Any]]:
         system_prompt = "Extract customer_id, order_id, amount (float), currency (str), operation (REFUND, PAYMENT_AUTHORIZATION, PAYMENT_CANCEL). Return strictly JSON."
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 if self.provider == "gemini":
-                    if not settings.GEMINI_API_KEY: return None
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={settings.GEMINI_API_KEY}"
+                    gemini_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
+                    if not gemini_key:
+                        return None
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={gemini_key}"
                     payload = {
-                        "contents": [{"parts":[{"text": f"{system_prompt}\n\n{text}"}]}],
+                        "contents": [{"parts": [{"text": f"{system_prompt}\n\n{text}"}]}],
                         "generationConfig": {"responseMimeType": "application/json"}
                     }
                     resp = await client.post(url, json=payload)
                     resp.raise_for_status()
                     result = resp.json()
-                    content = result["candidates"][0]["content"]["parts"][0]["text"]
+                    content = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    if content.startswith("```"):
+                        content = re.sub(r"^```(?:json)?\n?", "", content)
+                        content = re.sub(r"\n?```$", "", content)
                     return json.loads(content)
                 elif self.provider == "openai":
-                    if not settings.OPENAI_API_KEY: return None
+                    openai_key = settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
+                    if not openai_key:
+                        return None
                     url = "https://api.openai.com/v1/chat/completions"
-                    headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+                    headers = {"Authorization": f"Bearer {openai_key}"}
                     payload = {
-                        "model": "gpt-4o-mini",
+                        "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": text}
@@ -138,7 +145,11 @@ class FinancialAIAgent:
                     }
                     resp = await client.post(url, headers=headers, json=payload)
                     resp.raise_for_status()
-                    return json.loads(resp.json()["choices"][0]["message"]["content"])
+                    content = resp.json()["choices"][0]["message"]["content"].strip()
+                    if content.startswith("```"):
+                        content = re.sub(r"^```(?:json)?\n?", "", content)
+                        content = re.sub(r"\n?```$", "", content)
+                    return json.loads(content)
                 elif self.provider == "ollama":
                     url = f"{settings.OLLAMA_BASE_URL}/api/generate"
                     payload = {
@@ -149,7 +160,12 @@ class FinancialAIAgent:
                     }
                     resp = await client.post(url, json=payload)
                     resp.raise_for_status()
-                    return json.loads(resp.json()["response"])
+                    content = resp.json()["response"].strip()
+                    if content.startswith("```"):
+                        content = re.sub(r"^```(?:json)?\n?", "", content)
+                        content = re.sub(r"\n?```$", "", content)
+                    return json.loads(content)
         except Exception as e:
             print(f"LLM API Error: {e}")
         return None
+
