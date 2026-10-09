@@ -58,6 +58,12 @@ describe('request', () => {
     expect(lost).toBe(true);
   });
 
+  it('declares cookie mode on auth calls so the refresh token stays out of the body', async () => {
+    const { impl, calls } = fakeFetch([response(200, { access_token: 'a', user: {} })]);
+    await request('/auth/login', { method: 'POST', body: { email: 'e', password: 'p' }, auth: false, fetchImpl: impl });
+    expect(calls[0].init.headers['X-IntentGuard-CSRF']).toBe('1');
+  });
+
   it('treats a decision as data, not an error (API contract rule 2)', async () => {
     const { impl } = fakeFetch([response(200, { decision: 'REJECT', reason: 'AMOUNT_EXCEEDS_AUTHORIZATION' })]);
     await expect(request('/intents/INT-1/proposals', { method: 'POST', body: {}, fetchImpl: impl }))

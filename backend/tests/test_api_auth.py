@@ -38,6 +38,18 @@ def test_login_returns_tokens_and_wrong_password_is_generic(api):
         assert bad.status_code == 401 and bad.json()["error"]["code"] == "INVALID_CREDENTIALS"
 
 
+def test_browser_cookie_mode_keeps_the_refresh_token_out_of_the_body(api):
+    """SECURITY 3.4: a browser (CSRF header) only gets the HttpOnly cookie; API clients get the token."""
+    creds = {"email": EMAILS["op-asha"], "password": PASSWORD}
+    browser = api.client.post("/api/auth/login", json=creds, headers={"X-IntentGuard-CSRF": "1"})
+    assert browser.status_code == 200 and "refresh_token" not in browser.json()
+    assert "ig_refresh" in browser.headers["set-cookie"]
+    rotated = api.client.post("/api/auth/refresh", headers={"X-IntentGuard-CSRF": "1"})  # cookie from the jar
+    assert rotated.status_code == 200 and "refresh_token" not in rotated.json() and rotated.json()["access_token"]
+    client = api.client.post("/api/auth/login", json=creds)
+    assert client.json()["refresh_token"]
+
+
 def test_repeated_failures_lock_the_account(api):
     for _ in range(5):
         api.client.post("/api/auth/login", json={"email": EMAILS["op-ravi"], "password": "wrong-password-123"})
@@ -60,10 +72,10 @@ def test_cookie_refresh_needs_the_csrf_header_and_logout_revokes(api):
     api.client.post("/api/auth/login", json={"email": EMAILS["op-asha"], "password": PASSWORD})
     assert api.client.post("/api/auth/refresh").json()["error"]["code"] == "CSRF_REQUIRED"
     ok = api.client.post("/api/auth/refresh", headers={"X-IntentGuard-CSRF": "1"})
-    assert ok.status_code == 200
-    token = ok.json()["refresh_token"]
-    assert api.client.post("/api/auth/logout", json={"refresh_token": token}).status_code == 204
-    assert api.client.post("/api/auth/refresh", json={"refresh_token": token}).status_code == 401
+    assert ok.status_code == 200 and "refresh_token" not in ok.json()
+    rotated = api.client.cookies.get("ig_refresh")
+    assert api.client.post("/api/auth/logout", headers={"X-IntentGuard-CSRF": "1"}).status_code == 204
+    assert api.client.post("/api/auth/refresh", json={"refresh_token": rotated}).status_code == 401
 
 
 @pytest.mark.parametrize("token_kind", ["expired", "wrong_aud", "wrong_iss", "alg_none", "hs512", "tampered",

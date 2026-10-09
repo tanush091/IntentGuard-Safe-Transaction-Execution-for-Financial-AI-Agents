@@ -94,6 +94,8 @@ export async function request(path, { method = 'GET', body, query, idempotencyKe
   }
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
+  // Cookie mode for /auth/*: the gateway then keeps the refresh token out of the response body.
+  if (path.startsWith('/auth/')) headers[CSRF_HEADER] = '1';
   if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   let res;
