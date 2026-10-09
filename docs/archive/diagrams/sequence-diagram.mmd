@@ -1,0 +1,25 @@
+%% Superseded - describes the earlier prototype. Numbers here are not measured results.
+sequenceDiagram
+    autonumber
+    actor Operator as Human Operator
+    participant IntentDB as Durable Intent Record
+    participant Agent as AI Agent
+    participant Gateway as Safety Gateway
+    participant AttemptDB as Attempt & Effect Ledger
+    participant MockPay as Mock Payment Service
+
+    Operator->>IntentDB: Register Authorization (INT-001, C-17, ORD-204, ₹1500, REFUND)
+    IntentDB-->>Operator: 201 Created (State: AUTHORIZED)
+
+    Agent->>Gateway: Submit Proposal (INT-001, C-17, ORD-204, ₹1500, REFUND)
+    Gateway->>IntentDB: Fetch Intent Bounds
+    Gateway->>Gateway: Execute 10 Invariant Checks
+    Gateway->>AttemptDB: Log Audit Event (Decision: APPROVED)
+    Gateway->>AttemptDB: Create Attempt 1 (State: SUBMITTED, Idempotency-Key: INT-001-att-1)
+
+    Gateway->>MockPay: POST /refunds (order_id=ORD-204, amount=1500)
+    MockPay-->>Gateway: 200 OK (provider_reference=ref_sim_9123, status=COMPLETED)
+
+    Gateway->>AttemptDB: Record Effect (ref_sim_9123, ₹1500, COMPLETED)
+    Gateway->>IntentDB: Transition State to COMPLETED
+    Gateway-->>Agent: Settlement Success Confirmation

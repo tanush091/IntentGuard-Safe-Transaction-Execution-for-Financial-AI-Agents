@@ -1,0 +1,94 @@
+%% IntentGuard architecture — the agent proposes, the gateway verifies and executes.
+%% Render: paste into https://mermaid.live, or view on GitHub / VS Code with a Mermaid extension.
+flowchart LR
+    classDef person fill:#EEF4F2,stroke:#3C6E80,stroke-width:1.5px,color:#16242B
+    classDef agent fill:#FDF3E1,stroke:#D9961A,stroke-width:1.5px,color:#16242B
+    classDef gw fill:#0E3A3F,stroke:#0E3A3F,color:#FFFFFF
+    classDef step fill:#FFFFFF,stroke:#0F7B5F,stroke-width:1.5px,color:#0E3A3F
+    classDef store fill:#E6F2EE,stroke:#0F7B5F,stroke-width:1.5px,color:#0E3A3F
+    classDef provider fill:#E8EEF1,stroke:#3C6E80,stroke-width:1.5px,color:#16242B
+    classDef offline fill:#F4F4F4,stroke:#6B7A84,stroke-dasharray:4 3,color:#16242B
+
+    %% ---------------- people and the AI agent ----------------
+    subgraph USERS["Users"]
+        direction TB
+        OP["👤 Operator<br/><small>approves refunds / holds</small>"]:::person
+        RV["👤 Reviewer<br/><small>resolves escalations</small>"]:::person
+        AU["👤 Auditor / Finance<br/><small>verifies the audit chain</small>"]:::person
+        AG["🤖 AI agent<br/><small>rule extractor or LLM<br/>(OpenAI · Ollama · Gemini)</small>"]:::agent
+    end
+
+    UI["🖥️ Dashboard :3000<br/><small>React + Vite · frontend/</small><br/><small>overview · intents · reviews · audit · experiments</small>"]:::person
+
+    %% ---------------- the gateway ----------------
+    subgraph GATEWAY["IntentGuard gateway :8000  (backend/gateway_api + backend/intentguard)"]
+        direction TB
+        API["HTTP API · FastAPI<br/><small>/api/intents · /proposals · /agent<br/>/reviews · /audit · /metrics · /experiments</small>"]:::step
+
+        subgraph ENGINE["Protocol engine · backend/intentguard/engine.py"]
+            direction LR
+            D["① Decide<br/><small>checks.py vs. intent<br/>+ ledger · locked</small>"]:::step
+            R["② Reserve<br/><small>attempt saved first<br/>key ig-‹intent›-g‹n›</small>"]:::step
+            X["③ Execute<br/><small>provider call<br/>no lock held</small>"]:::step
+            V["④ Verify<br/><small>read back the<br/>transaction</small>"]:::step
+            RC["⑤ Reconcile<br/><small>unknown → search;<br/>absent only after window</small>"]:::step
+            RE["⑥ Recover<br/><small>cancel + confirm,<br/>else escalate</small>"]:::step
+            D --> R --> X --> V
+            V -.->|no reply| RC
+            V -.->|wrong effect| RE
+            RC -.->|proven absent| R
+        end
+
+        SM["State machine · domain.py<br/><small>AUTHORIZED → IN_FLIGHT → COMPLETED<br/>OUTCOME_UNKNOWN · DISCREPANCY · NEEDS_REVIEW</small>"]:::step
+        WK["⏱ Background worker<br/><small>re-checks pending / unknown<br/>startup crash recovery</small>"]:::step
+        PORT["Provider port · providers/base.py<br/><small>HttpProvider · InProcessProvider</small>"]:::step
+
+        API --> ENGINE
+        WK --> ENGINE
+        ENGINE --- SM
+        ENGINE --> PORT
+    end
+
+    %% ---------------- durable ledger ----------------
+    subgraph LEDGER["Ledger database · SQLite / PostgreSQL · models.py"]
+        direction TB
+        T1[("operators · orders")]:::store
+        T2[("intents · proposals · attempts")]:::store
+        T3[("effects<br/><small>≤ 1 live intended effect per intent</small>")]:::store
+        T4[("review_cases")]:::store
+        T5[("audit_events<br/><small>append-only · hash-chained</small>")]:::store
+    end
+
+    %% ---------------- payment provider ----------------
+    subgraph PROVIDER["Payment provider :8001 · backend/provider_api + backend/paysim"]
+        direction TB
+        PAPI["/v1/refunds · /v1/authorizations<br/><small>create · get · list · cancel / void</small>"]:::provider
+        SIMU["paysim simulator<br/><small>pending → completed · idempotency keys<br/>delayed search · 8 injectable faults</small>"]:::provider
+        GT[("/v1/ledger<br/><small>ground truth</small>")]:::provider
+        PAPI --> SIMU --> GT
+    end
+
+    %% ---------------- offline research harness ----------------
+    subgraph BENCH["Benchmark · experiments/bench  (offline, simulated clock)"]
+        direction TB
+        SC["scenarios.py<br/><small>30 categories · near-miss IDs</small>"]:::offline
+        ARMS["arms.py<br/><small>A–D baselines · E IntentGuard<br/>10 ablations</small>"]:::offline
+        SCO["scoring.py · oracle<br/><small>judged on provider ledger</small>"]:::offline
+        RES[("experiments/results/<br/><small>summary.json · summary.md · CSV</small>")]:::offline
+        SC --> ARMS --> SCO --> RES
+    end
+
+    %% ---------------- flows ----------------
+    OP -->|approve intent| UI
+    RV -->|resolve case| UI
+    AU -->|verify chain| UI
+    UI -->|/api| API
+    AG ==>|"proposals only<br/>(no payment credentials)"| API
+
+    ENGINE <-->|read / write| LEDGER
+    PORT ==>|"the only path to money"| PAPI
+
+    ARMS -.->|same engine, in-process provider| ENGINE
+    RES -.->|/api/experiments/latest| API
+
+    class GATEWAY gw

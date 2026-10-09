@@ -1,0 +1,146 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  :root { --ink:#16242B; --teal:#0E3A3F; --green:#0F7B5F; --amber:#D9961A; --slate:#3C6E80; --muted:#6B7A84; --tint:#EEF4F2; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#fff; font-family: Calibri, "Segoe UI", Arial, sans-serif; color:var(--ink); }
+  #c { position:relative; width:1800px; height:1120px; }
+  .b { position:absolute; border-radius:10px; padding:10px 14px; }
+  .t { font-weight:700; font-size:17px; }
+  .s { font-size:14px; color:#3E4B52; margin-top:3px; line-height:1.3; }
+  .person { background:var(--tint); border:1.5px solid var(--slate); }
+  .agent { background:#FDF3E1; border:1.8px solid var(--amber); }
+  .step { background:#fff; border:1.6px solid var(--green); }
+  .gwbox { background:#F3F8F6; border:2.5px solid var(--teal); border-radius:14px; }
+  .hdr { position:absolute; left:0; right:0; top:0; height:42px; background:var(--teal); color:#fff; border-radius:11px 11px 0 0;
+         font-weight:700; font-size:19px; padding:9px 18px; }
+  .sub { background:#fff; border:1.5px solid #9FB7B0; border-radius:12px; }
+  .sublabel { position:absolute; font-weight:700; font-size:15px; color:var(--teal); }
+  .store { background:#E6F2EE; border:1.5px solid var(--green); border-radius:10px; text-align:center; }
+  .prov { background:#E8EEF1; border:1.6px solid var(--slate); }
+  .bench { background:#F7F7F7; border:1.6px dashed var(--muted); }
+  .num { display:inline-block; width:24px; height:24px; border-radius:12px; background:var(--green); color:#fff;
+         text-align:center; font-size:14px; line-height:24px; margin-right:6px; font-weight:700; }
+  .title { position:absolute; left:30px; top:14px; font-size:28px; font-weight:700; color:var(--teal); font-family: Cambria, Georgia, serif; }
+  .subtitle { position:absolute; left:32px; top:52px; font-size:16px; color:var(--muted); }
+  .lbl { position:absolute; font-size:13.5px; font-weight:700; background:#fff; padding:1px 6px; border-radius:6px; }
+  .legend { position:absolute; font-size:13px; color:var(--muted); }
+  svg { position:absolute; left:0; top:0; }
+</style></head>
+<body><div id="c">
+<div class="title">IntentGuard — system architecture</div>
+<div class="subtitle">The AI agent only proposes. The gateway checks every proposal against the human approval, moves the money itself, and verifies the result with the provider.</div>
+
+<!-- ============ users ============ -->
+<div class="b person" style="left:30px;top:110px;width:290px;height:70px"><div class="t">👤 Operator</div><div class="s">approves refunds and payment holds</div></div>
+<div class="b person" style="left:30px;top:195px;width:290px;height:70px"><div class="t">👤 Reviewer</div><div class="s">resolves escalated cases</div></div>
+<div class="b person" style="left:30px;top:280px;width:290px;height:70px"><div class="t">👤 Auditor / Finance</div><div class="s">checks the tamper-evident audit chain</div></div>
+<div class="b agent" style="left:30px;top:410px;width:290px;height:118px"><div class="t">🤖 AI agent</div><div class="s">reads the support ticket and proposes an action<br>rule extractor, or an LLM (OpenAI · Ollama · Gemini)</div></div>
+
+<div class="b person" style="left:390px;top:165px;width:250px;height:130px"><div class="t">🖥️ Dashboard  :3000</div><div class="s">React + Vite · <i>frontend/</i><br>overview · intents · reviews<br>audit · experiments</div></div>
+
+<!-- ============ gateway ============ -->
+<div class="b gwbox" style="left:700px;top:92px;width:700px;height:668px;padding:0"><div class="hdr">IntentGuard gateway  :8000 &nbsp;<span style="font-weight:400;font-size:15px">backend/gateway_api + backend/intentguard</span></div></div>
+
+<div class="b step" style="left:725px;top:150px;width:650px;height:62px"><div class="t">HTTP API · FastAPI</div><div class="s">/api/intents · /proposals · /agent · /reviews · /audit · /metrics · /experiments</div></div>
+
+<div class="b sub" style="left:725px;top:228px;width:650px;height:310px"></div>
+<div class="sublabel" style="left:742px;top:236px">Protocol engine · backend/intentguard/engine.py</div>
+<div class="b step" style="left:745px;top:270px;width:180px;height:92px"><div class="t"><span class="num">1</span>Decide</div><div class="s">checks.py vs. the approval and ledger · locked</div></div>
+<div class="b step" style="left:960px;top:270px;width:180px;height:92px"><div class="t"><span class="num">2</span>Reserve</div><div class="s">attempt saved <b>before</b> the call · stable key</div></div>
+<div class="b step" style="left:1175px;top:270px;width:180px;height:92px"><div class="t"><span class="num">3</span>Execute</div><div class="s">call the provider · no lock held</div></div>
+<div class="b step" style="left:1175px;top:410px;width:180px;height:102px"><div class="t"><span class="num">4</span>Verify</div><div class="s">read the transaction back from the provider</div></div>
+<div class="b step" style="left:960px;top:410px;width:180px;height:102px"><div class="t"><span class="num">5</span>Reconcile</div><div class="s">unknown → search; “absent” only after the window</div></div>
+<div class="b step" style="left:745px;top:410px;width:180px;height:102px"><div class="t"><span class="num">6</span>Recover</div><div class="s">cancel + confirm if allowed, else escalate</div></div>
+
+<div class="b step" style="left:725px;top:545px;width:205px;height:92px"><div class="t">State machine</div><div class="s">domain.py · every state change checked</div></div>
+<div class="b step" style="left:947px;top:545px;width:206px;height:92px"><div class="t">⏱ Background worker</div><div class="s">re-checks pending / unknown · crash recovery on start</div></div>
+<div class="b step" style="left:1170px;top:545px;width:205px;height:92px"><div class="t">Provider port</div><div class="s">providers/ · HttpProvider · InProcessProvider</div></div>
+
+<div class="b" style="left:725px;top:652px;width:650px;height:96px;background:#fff;border:1.5px dashed #9FB7B0">
+  <div class="t" style="font-size:15px">Guarantees</div>
+  <div class="s">• proposal must equal the approval (customer, order, amount, currency, operation, operator permission)<br>
+  • one provider key per approval → restarts and concurrent agents cannot pay twice<br>
+  • nothing is reported “done” or “reversed” until the provider confirms it</div>
+</div>
+
+<!-- ============ ledger ============ -->
+<div class="b sub" style="left:700px;top:820px;width:700px;height:175px"></div>
+<div class="sublabel" style="left:718px;top:830px">Ledger database · SQLite / PostgreSQL · backend/intentguard/models.py</div>
+<div class="b store" style="left:718px;top:870px;width:120px;height:100px"><div class="t" style="font-size:15px">operators<br>orders</div></div>
+<div class="b store" style="left:850px;top:870px;width:150px;height:100px"><div class="t" style="font-size:15px">intents<br>proposals<br>attempts</div></div>
+<div class="b store" style="left:1012px;top:870px;width:130px;height:100px"><div class="t" style="font-size:15px">effects</div><div class="s" style="font-size:12.5px">≤ 1 live intended effect per intent (DB rule)</div></div>
+<div class="b store" style="left:1154px;top:870px;width:100px;height:100px"><div class="t" style="font-size:15px">review<br>cases</div></div>
+<div class="b store" style="left:1266px;top:870px;width:116px;height:100px"><div class="t" style="font-size:15px">audit events</div><div class="s" style="font-size:12.5px">append-only · hash-chained</div></div>
+
+<!-- ============ provider ============ -->
+<div class="b sub" style="left:1470px;top:260px;width:300px;height:400px"></div>
+<div class="sublabel" style="left:1488px;top:270px">Payment provider  :8001</div>
+<div class="s" style="position:absolute;left:1488px;top:292px">backend/provider_api + paysim (simulator)</div>
+<div class="b prov" style="left:1488px;top:325px;width:264px;height:80px"><div class="t">/v1/refunds · /v1/authorizations</div><div class="s">create · get · list · cancel / void</div></div>
+<div class="b prov" style="left:1488px;top:420px;width:264px;height:120px"><div class="t">paysim engine</div><div class="s">pending → completed · cancel only while pending · idempotency keys · delayed search · 8 injectable faults</div></div>
+<div class="b prov" style="left:1488px;top:555px;width:264px;height:80px"><div class="t">/v1/ledger</div><div class="s">ground truth: every real transaction</div></div>
+
+<!-- ============ benchmark ============ -->
+<div class="b bench" style="left:30px;top:620px;width:610px;height:375px"></div>
+<div class="sublabel" style="left:48px;top:630px;color:#3E4B52">Benchmark · experiments/bench (offline, simulated clock)</div>
+<div class="b step" style="left:48px;top:670px;width:270px;height:80px;border-color:#6B7A84"><div class="t">scenarios.py</div><div class="s">30 situation types · look-alike order IDs · agent errors · faults</div></div>
+<div class="b step" style="left:350px;top:670px;width:270px;height:80px;border-color:#6B7A84"><div class="t">arms.py</div><div class="s">baselines A–D · E IntentGuard · 10 ablations</div></div>
+<div class="b step" style="left:350px;top:790px;width:270px;height:80px;border-color:#6B7A84"><div class="t">scoring.py · oracle</div><div class="s">judges every arm on the provider’s ledger</div></div>
+<div class="b step" style="left:48px;top:790px;width:270px;height:96px;border-color:#6B7A84"><div class="t">experiments/results/</div><div class="s">summary.md · .json · .csv → shown in the dashboard via /api/experiments/latest</div></div>
+<div class="s" style="position:absolute;left:48px;top:915px;width:570px">10 seeds × 300 scenarios × 15 architectures = 45,000 scored runs · 95% bootstrap confidence intervals</div>
+
+<!-- ============ arrows ============ -->
+<svg width="1800" height="1120">
+  <defs>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5B6B73"/></marker>
+    <marker id="gr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0F7B5F"/></marker>
+    <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D9961A"/></marker>
+  </defs>
+  <g stroke="#5B6B73" stroke-width="2" fill="none">
+    <path d="M320 145 L388 200" marker-end="url(#g)"/>
+    <path d="M320 230 L388 230" marker-end="url(#g)"/>
+    <path d="M320 315 L388 262" marker-end="url(#g)"/>
+    <path d="M640 230 L722 185" marker-end="url(#g)"/>
+  </g>
+  <!-- agent proposals -->
+  <path d="M320 468 C 560 468, 600 200, 722 200" stroke="#D9961A" stroke-width="3.5" fill="none" marker-end="url(#am)"/>
+  <!-- engine flow -->
+  <g stroke="#0F7B5F" stroke-width="2" fill="none">
+    <path d="M925 316 L958 316" marker-end="url(#gr)"/>
+    <path d="M1140 316 L1173 316" marker-end="url(#gr)"/>
+    <path d="M1265 362 L1265 408" marker-end="url(#gr)"/>
+    <path d="M1173 456 L1142 456" marker-end="url(#gr)"/>
+    <path d="M1050 410 L1050 364" stroke-dasharray="5 4" marker-end="url(#gr)"/>
+    <path d="M1210 512 C 1160 533, 880 533, 840 514" stroke-dasharray="5 4" marker-end="url(#gr)"/>
+    <path d="M1048 212 L1048 226" marker-end="url(#gr)"/>
+  </g>
+  <!-- port to provider -->
+  <path d="M1375 590 C 1420 590, 1420 365, 1486 365" stroke="#0F7B5F" stroke-width="4" fill="none" marker-end="url(#gr)"/>
+  <!-- ledger -->
+  <path d="M1050 762 L1050 818" stroke="#5B6B73" stroke-width="2.5" fill="none" marker-start="url(#g)" marker-end="url(#g)"/>
+  <!-- benchmark -->
+  <g stroke="#6B7A84" stroke-width="2" fill="none" stroke-dasharray="6 5">
+    <path d="M318 710 L348 710" marker-end="url(#g)"/>
+    <path d="M485 750 L485 788" marker-end="url(#g)"/>
+    <path d="M350 830 L320 830" marker-end="url(#g)"/>
+    <path d="M620 700 C 675 700, 670 400, 722 400"  marker-end="url(#g)"/>
+  </g>
+</svg>
+
+<!-- arrow labels -->
+<div class="lbl" style="left:446px;top:400px;color:#B07400;border:1.5px solid #D9961A">proposals only — no payment credentials</div>
+<div class="lbl" style="left:654px;top:178px;color:#3E4B52">/api</div>
+<div class="lbl" style="left:1272px;top:375px;color:var(--green)">result</div>
+<div class="lbl" style="left:1128px;top:426px;color:var(--green);font-weight:400">no reply</div>
+<div class="lbl" style="left:1058px;top:376px;color:var(--green);font-weight:400">proven absent → retry</div>
+<div class="lbl" style="left:960px;top:516px;color:var(--green);font-weight:400">wrong effect</div>
+<div class="lbl" style="left:1385px;top:470px;color:var(--green);border:1.5px solid var(--green)">only path<br>to money</div>
+<div class="lbl" style="left:1062px;top:780px;color:#3E4B52;font-weight:400">read / write in locked transactions</div>
+<div class="lbl" style="left:470px;top:568px;color:var(--muted);font-weight:400">same engine, in-process provider</div>
+
+<div class="legend" style="left:30px;top:1030px;width:1740px">
+  <b style="color:#B07400">Amber</b> = untrusted AI input &nbsp;·&nbsp; <b style="color:#0F7B5F">Green</b> = protocol path that can move money &nbsp;·&nbsp; dashed boxes = offline research harness &nbsp;·&nbsp;
+  Ports: dashboard 3000 · gateway 8000 · provider 8001 &nbsp;·&nbsp; Code: github.com/tanush091/IntentGuard-Safe-Transaction-Execution-for-Financial-AI-Agents
+</div>
+</div></body></html>

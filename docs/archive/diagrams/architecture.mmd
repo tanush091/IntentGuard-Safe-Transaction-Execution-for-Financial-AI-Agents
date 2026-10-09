@@ -1,0 +1,31 @@
+%% Superseded - describes the earlier prototype. Numbers here are not measured results.
+graph TD
+    classDef human fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
+    classDef intent fill:#0f172a,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
+    classDef agent fill:#3b0764,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
+    classDef gateway fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#f8fafc;
+    classDef block fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#f8fafc;
+    classDef payment fill:#1e1b4b,stroke:#8b5cf6,stroke-width:2px,color:#f8fafc;
+    classDef state fill:#172554,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef recon fill:#422006,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
+    classDef complete fill:#064e3b,stroke:#22c55e,stroke-width:2px,color:#f8fafc;
+
+    OP[Human Operator / Billing Service]:::human -->|1. Authorizes Boundary| DIR[(Durable Intent Record)]:::intent
+    DIR -->|2. Provides Intent Context| AGT[AI Agent: Scripted / LLM]:::agent
+    AGT -->|3. Proposes Structured JSON| GW{Intent-Consistency Gateway}:::gateway
+    
+    GW -->|Check Fails: Amount/Order Mismatch| BLK[BLOCKED: Audit Logged]:::block
+    GW -->|All 10 Checks Pass: APPROVED| ATT[(Record Attempt)]:::intent
+    
+    ATT -->|4. Dispatch with Idempotency Key| MPS[Mock Payment Service Simulator]:::payment
+    MPS -->|5. Return Immediate Response| RES{Read External State}:::state
+    
+    RES -->|200 OK: Exact Match| CMP[COMPLETED: Effect Recorded]:::complete
+    RES -->|Timeout / Lost Response| UNK[UNKNOWN: Attempt Logged]:::recon
+    RES -->|Corrupted / Unexpected| ESC[CANCEL / ESCALATE Review]:::block
+    
+    UNK -->|6. Trigger Active Query| REC[Reconciliation Service]:::recon
+    REC -->|Query by Order & Provider Ref| MPS
+    REC -->|Effect Verified Settled| CMP
+    REC -->|Zero Effect Confirmed| RET[Controlled Retry Permitted]:::gateway
+    RET -->|Increment Attempt| ATT
