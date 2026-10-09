@@ -49,3 +49,7 @@ build/
 experiments/results/*/
 !experiments/results/latest/
 !experiments/results/20261005T141650Z/
+
+# Presentation decks (untracked)
+docs/presentation/
+
