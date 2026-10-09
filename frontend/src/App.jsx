@@ -1,25 +1,40 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
-import { Shield, LayoutDashboard, ClipboardList, Gavel, ScrollText, FlaskConical, Moon, Sun } from 'lucide-react';
-import api from './services/api.js';
-import { Spinner, ToastProvider, usePoll } from './components/ui.jsx';
-import Overview from './views/Overview.jsx';
-import Intents from './views/Intents.jsx';
-import Reviews from './views/Reviews.jsx';
-import Audit from './views/Audit.jsx';
-// recharts is only needed on the Experiments tab; load it on demand.
-const Experiments = lazy(() => import('./views/Experiments.jsx'));
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import {
+  ClipboardList, FlaskConical, Gavel, LayoutDashboard, LogOut, Moon, ScrollText, Settings, ShieldCheck, Sun,
+  TriangleAlert, Workflow,
+} from 'lucide-react';
+import { useAuth } from './hooks/useAuth.jsx';
+import { usePoll } from './hooks/usePoll.js';
+import api from './api/endpoints.js';
+import { Spinner } from './components/ui.jsx';
+import { AuditBadge } from './components/Widgets.jsx';
+import { can } from './domain.js';
+import Login from './pages/Login.jsx';
+import Overview from './pages/Overview.jsx';
+import Intents from './pages/Intents.jsx';
+import IntentDetail from './pages/IntentDetail.jsx';
 
-const TABS = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'intents', label: 'Intents', icon: ClipboardList },
-  { id: 'reviews', label: 'Reviews', icon: Gavel },
-  { id: 'audit', label: 'Audit', icon: ScrollText },
-  { id: 'experiments', label: 'Experiments', icon: FlaskConical },
+const Exceptions = lazy(() => import('./pages/Exceptions.jsx'));
+const Reviews = lazy(() => import('./pages/Reviews.jsx'));
+const Reconciliation = lazy(() => import('./pages/Reconciliation.jsx'));
+const Audit = lazy(() => import('./pages/Audit.jsx'));
+const Experiments = lazy(() => import('./pages/Experiments.jsx'));
+const Admin = lazy(() => import('./pages/Admin.jsx'));
+
+const PAGES = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard, cap: 'metrics:read', component: Overview },
+  { id: 'intents', label: 'Intents', icon: ClipboardList, cap: 'intents:read', component: Intents },
+  { id: 'exceptions', label: 'Exceptions', icon: TriangleAlert, cap: 'exceptions:read', component: Exceptions },
+  { id: 'reviews', label: 'Review queue', icon: Gavel, cap: 'reviews:read', component: Reviews },
+  { id: 'reconciliation', label: 'Reconciliation', icon: Workflow, cap: 'reconciliation:read', component: Reconciliation },
+  { id: 'audit', label: 'Audit', icon: ScrollText, cap: 'audit:read', component: Audit },
+  { id: 'experiments', label: 'Experiments', icon: FlaskConical, cap: 'metrics:read', component: Experiments },
+  { id: 'admin', label: 'Admin', icon: Settings, cap: 'admin', component: Admin },
 ];
 
-function readHash() {
-  const h = (window.location.hash || '').replace(/^#\/?/, '');
-  return TABS.some((t) => t.id === h) ? h : 'overview';
+function parseHash() {
+  const parts = window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  return { page: parts[0] || 'overview', id: parts[1] ? decodeURIComponent(parts[1]) : null };
 }
 
 function useTheme() {
@@ -31,92 +46,76 @@ function useTheme() {
     }
   });
   useEffect(() => {
-    if (theme) document.documentElement.setAttribute('data-theme', theme);
-    else document.documentElement.removeAttribute('data-theme');
+    if (theme) document.documentElement.dataset.theme = theme;
+    else delete document.documentElement.dataset.theme;
     try {
       if (theme) localStorage.setItem('ig-theme', theme);
-    } catch {
-      /* storage unavailable */
-    }
+    } catch { /* preference only */ }
   }, [theme]);
-  const isDark =
-    theme === 'dark' || (!theme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  return [isDark, () => setTheme(isDark ? 'light' : 'dark')];
+  const dark = theme ? theme === 'dark' : !window.matchMedia?.('(prefers-color-scheme: light)').matches;
+  return { dark, toggle: () => setTheme(dark ? 'light' : 'dark') };
 }
 
-function Shell() {
-  const [tab, setTab] = useState(readHash);
-  const [focusIntent, setFocusIntent] = useState(null);
-  const [isDark, toggleTheme] = useTheme();
-  // Badge counts on the nav come from live metrics.
-  const { data: m, error: mErr } = usePoll(() => api.metrics(), [], 4000);
+function Counts({ user }) {
+  const ex = usePoll(() => (can(user, 'exceptions:read') ? api.listExceptions({ limit: 200 }) : Promise.resolve(null)), [], 10000);
+  const rv = usePoll(() => (can(user, 'reviews:read') ? api.listReviews({ status: 'OPEN', limit: 200 }) : Promise.resolve(null)), [], 10000);
+  return { exceptions: ex.data?.items.length || 0, reviews: rv.data?.items.length || 0 };
+}
 
+function Shell({ user, logout }) {
+  const [route, setRoute] = useState(parseHash);
+  const { dark, toggle } = useTheme();
+  const counts = Counts({ user });
+  const { data: ready } = usePoll(() => api.ready().catch(() => null), [], 30000);
   useEffect(() => {
-    const onHash = () => setTab(readHash());
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    const h = () => setRoute(parseHash());
+    window.addEventListener('hashchange', h);
+    return () => window.removeEventListener('hashchange', h);
   }, []);
-
-  const goto = (id) => {
-    window.location.hash = `/${id}`;
-    setTab(id);
-  };
-  const openIntent = (id) => {
-    setFocusIntent(id);
-    goto('intents');
-  };
-
-  const navCount = {
-    reviews: m?.open_reviews?.count,
-  };
-
+  const navigate = useCallback((path) => { window.location.hash = path; }, []);
+  const visible = PAGES.filter((p) => can(user, p.cap));
+  const page = visible.find((p) => p.id === route.page) || visible[0];
+  const Page = route.page === 'intents' && route.id ? IntentDetail : page?.component;
+  const badge = { exceptions: counts.exceptions, reviews: counts.reviews };
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <Shield size={22} />
-          <div>
-            <div className="brand-name">IntentGuard</div>
-            <div className="brand-sub">Intent-consistent payments for AI agents</div>
-          </div>
-        </div>
-        <nav className="nav">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} className={`nav-btn ${tab === id ? 'active' : ''}`} onClick={() => goto(id)}>
-              <Icon size={16} />
-              <span>{label}</span>
-              {navCount[id] ? <span className="nav-count">{navCount[id]}</span> : null}
-            </button>
+    <div className="shell">
+      <nav className="sidebar" aria-label="Main">
+        <div className="brand"><ShieldCheck className="brand-mark" size={22} /><span>IntentGuard<small>Recovery</small></span></div>
+        <div className="nav">
+          {visible.map((p) => (
+            <a key={p.id} href={`#/${p.id}`} aria-current={page?.id === p.id ? 'page' : undefined} title={p.label}>
+              <p.icon size={18} aria-hidden="true" /><span>{p.label}</span>
+              {badge[p.id] > 0 && <span className="count" aria-label={`${badge[p.id]} open`}>{badge[p.id]}</span>}
+            </a>
           ))}
-        </nav>
-        <div className="topbar-right">
-          <span className={`conn ${mErr ? 'down' : m ? 'up' : ''}`} title={mErr ? mErr.message : 'Gateway reachable'}>
-            <i /> {mErr ? 'Gateway unreachable' : m ? 'Live' : 'Connecting…'}
-          </span>
-          <button className="icon-btn" onClick={toggleTheme} title="Toggle theme" aria-label="Toggle theme">
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
         </div>
-      </header>
-      <main className="main">
-        {tab === 'overview' && <Overview goto={goto} />}
-        {tab === 'intents' && <Intents focus={focusIntent} onFocusConsumed={() => setFocusIntent(null)} />}
-        {tab === 'reviews' && <Reviews openIntent={openIntent} />}
-        {tab === 'audit' && <Audit openIntent={openIntent} />}
-        {tab === 'experiments' && (
+        <div className="sidebar-foot">
+          <span className="hide-narrow muted">{user.name}</span>
+          <span className="hide-narrow mono muted">{user.role}</span>
+          <button className="btn btn-ghost btn-sm" onClick={logout}><LogOut size={14} /><span className="hide-narrow">Sign out</span></button>
+        </div>
+      </nav>
+      <div className="main">
+        <header className="topbar">
+          <span className="sim-banner">Simulated provider · no real money</span>
+          <div className="row">
+            <AuditBadge user={user} />
+            {ready && ready.status !== 'ready' && <span className="pill tone-rose">provider: {ready.provider}</span>}
+            <button className="icon-btn" onClick={toggle} aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button>
+          </div>
+        </header>
+        <main className="content">
           <Suspense fallback={<Spinner label="Loading…" />}>
-            <Experiments />
+            {Page ? <Page id={route.id} user={user} navigate={navigate} /> : <div className="muted">No page available for your role.</div>}
           </Suspense>
-        )}
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
 
 export default function App() {
-  return (
-    <ToastProvider>
-      <Shell />
-    </ToastProvider>
-  );
+  const { user, ready, logout } = useAuth();
+  if (!ready) return <div className="login-wrap"><Spinner label="Starting…" /></div>;
+  return user ? <Shell user={user} logout={logout} /> : <Login />;
 }

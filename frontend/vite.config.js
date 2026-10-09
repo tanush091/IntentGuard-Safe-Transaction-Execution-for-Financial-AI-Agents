@@ -5,7 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    host: '0.0.0.0',
+    // Loopback only: the dev server serves source files and must not be reachable from the network.
+    // To demo from another device, run `npm run dev -- --host` deliberately.
+    host: '127.0.0.1',
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8000',

@@ -3,9 +3,10 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ErrorBar, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { FlaskConical, RefreshCw, Table2, BarChart3, Info } from 'lucide-react';
-import api from '../services/api.js';
-import { Card, Empty, InlineError, Spinner, usePoll } from '../components/ui.jsx';
-import { ts } from '../util.js';
+import api from '../api/endpoints.js';
+import { usePoll } from '../hooks/usePoll.js';
+import { Card, Empty, InlineError, Spinner } from '../components/ui.jsx';
+import { formatTime } from '../domain.js';
 
 const GROUP_ORDER = ['baseline', 'proposed', 'ablation'];
 const GROUP_LABEL = { baseline: 'Baselines', proposed: 'Proposed', ablation: 'Ablations' };
@@ -45,7 +46,7 @@ function groupClass(g) {
 }
 
 export default function Experiments() {
-  const { data, error, loading, reload } = usePoll(() => api.latestExperiment(), [], 0);
+  const { data, error, loading, reload } = usePoll(() => api.experiments(), [], 0);
   const notFound = error && error.status === 404;
 
   const defs = data?.metric_definitions || {};
@@ -116,8 +117,8 @@ export default function Experiments() {
   if (notFound) {
     return (
       <Empty icon={<FlaskConical size={32} />} title="No benchmark results yet">
-        <p>Run the benchmark from the repository root, then refresh:</p>
-        <pre className="cmd">python -m bench run</pre>
+        <p>Run the benchmark, then refresh:</p>
+        <pre className="cmd">cd experiments && python -m bench run</pre>
         <button className="btn" onClick={reload}><RefreshCw size={14} /> Check again</button>
       </Empty>
     );
@@ -126,7 +127,7 @@ export default function Experiments() {
   const meta = data?.meta || {};
   const metaItems = [
     ['Run id', meta.run_id],
-    ['Created', typeof meta.created_at === 'number' ? ts(meta.created_at) : meta.created_at],
+    ['Created', formatTime(meta.created_at)],
     ['Seeds', Array.isArray(meta.seeds) ? `${meta.seeds.length} (${meta.seeds.join(', ')})` : meta.seeds],
     ['Scenarios / seed', meta.scenarios_per_seed],
     ['Git commit', meta.git_commit],

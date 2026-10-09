@@ -6,6 +6,7 @@ the agent endpoint's output validation, simulator-only endpoints, metrics, provi
 from __future__ import annotations
 
 import importlib
+import re
 
 from fastapi.testclient import TestClient
 
@@ -147,3 +148,30 @@ def test_provider_config_secret_is_write_only_and_orders(api):
     orders = api.client.get("/api/orders", headers=api.login()).json()["items"]
     assert {o["order_id"] for o in orders} == {"ORD-204", "ORD-240", "ORD-2041", "ORD-311"}
     assert api.client.get("/api/ready").json()["status"] == "ready"
+
+
+# ------------------------------------------------------------- demo orders
+
+
+def test_demo_order_is_registered_on_both_sides_and_refundable(api):
+    """The dashboard's demo cards create a fresh order per run so scenarios can be repeated."""
+    asha = api.login()
+    r = api.client.post("/api/dev/orders", headers=asha, json={"amount": "750"})
+    assert r.status_code == 201, r.text
+    order = r.json()
+    assert re.fullmatch(r"ORD-9\d{7}", order["order_id"]) and order["amount"] == "750.00"
+    iid = api.authorize(asha, order=order["order_id"], amount="750.00", ticket=None)
+    out = api.propose(asha, iid, order_id=order["order_id"], amount="750.00").json()
+    assert out["decision"] == "ALLOW"
+    assert api.client.get(f"/api/intents/{iid}", headers=asha).json()["state"] == "COMPLETED"
+    kinds = [e["kind"] for e in api.client.get("/api/audit", headers=api.login("admin"),
+                                               params={"kind": "dev.order_created"}).json()["items"]]
+    assert kinds == ["dev.order_created"]
+
+
+def test_amount_with_too_many_decimals_is_a_validation_error_not_a_500(api):
+    asha = api.login()
+    r = api.client.post("/api/authorizations", headers=asha, json={
+        "customer_id": "C-17", "order_id": "ORD-204", "operation": "REFUND", "authorized_amount": "1500.001",
+        "currency": "INR"})
+    assert r.status_code == 422 and r.json()["error"]["code"] in ("INVALID_AMOUNT", "VALIDATION_ERROR")

@@ -11,5 +11,8 @@ COPY paysim/ ./paysim/
 COPY gateway_api/ ./gateway_api/
 COPY provider_api/ ./provider_api/
 COPY investigator/ ./investigator/
+# Run as a non-root user (docs/SECURITY.md 8). /data holds the simulator's state volume.
+RUN useradd --system --uid 10001 --no-create-home intentguard     && mkdir -p /data && chown intentguard /data /app
+USER intentguard
 EXPOSE 8000 8001
 CMD ["uvicorn", "gateway_api.main:app", "--host", "0.0.0.0", "--port", "8000"]

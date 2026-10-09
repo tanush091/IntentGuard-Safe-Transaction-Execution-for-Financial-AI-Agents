@@ -130,3 +130,9 @@ class FaultIn(Strict):
     order_id: str | None = Field(default=None, pattern=ID_PATTERN)
     times: int = Field(default=1, ge=-1, le=100)
     params: dict[str, Any] = Field(default_factory=dict)
+
+
+class DemoOrderIn(Strict):
+    customer_id: str = Field(default="C-17", pattern=ID_PATTERN)
+    amount: Decimal = Field(default=Decimal(20000), gt=0, max_digits=18)
+    currency: str = Field(default="INR", pattern=CURRENCY_PATTERN)

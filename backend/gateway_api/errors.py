@@ -19,6 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from intentguard.db import SchemaMismatch
 from intentguard.domain import IllegalTransition
 from intentguard.engine import AuthorizationError, ConflictError, GatewayError, NotFound, PermissionDenied
+from intentguard.money import MoneyError
 
 log = logging.getLogger("intentguard.gateway")
 
@@ -59,6 +60,11 @@ def install(app: FastAPI) -> None:
     @app.exception_handler(IllegalTransition)
     async def _illegal(request: Request, exc: IllegalTransition) -> JSONResponse:
         return envelope(request, 409, "ILLEGAL_TRANSITION", str(exc))
+
+    @app.exception_handler(MoneyError)
+    async def _money(request: Request, exc: MoneyError) -> JSONResponse:
+        # e.g. "1500.001" INR: more decimals than the currency has minor units.
+        return envelope(request, 422, "INVALID_AMOUNT", str(exc))
 
     @app.exception_handler(SchemaMismatch)
     async def _schema(request: Request, exc: SchemaMismatch) -> JSONResponse:

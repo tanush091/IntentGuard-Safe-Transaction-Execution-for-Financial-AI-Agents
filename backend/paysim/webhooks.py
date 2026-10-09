@@ -47,6 +47,7 @@ class WebhookEmitter:
                  post: Callable[[str, bytes, dict[str, str]], int] | None = None, max_tries: int = 6):
         self.sim, self.url, self.secret = sim, url, secret
         self._post = post or self._http_post
+        self._client: Any = None
         self.max_tries = max_tries
         self._seen: dict[str, str] = {}
         self._seq: dict[str, int] = {}
@@ -54,11 +55,13 @@ class WebhookEmitter:
         self._lock = threading.Lock()
         self._stop = threading.Event()
 
-    @staticmethod
-    def _http_post(url: str, body: bytes, headers: dict[str, str]) -> int:
-        import httpx
+    def _http_post(self, url: str, body: bytes, headers: dict[str, str]) -> int:
+        # One pooled client: a fresh httpx.post per delivery rebuilds the TLS context each time (~1 s on Windows).
+        if self._client is None:
+            import httpx
 
-        return httpx.post(url, content=body, headers=headers, timeout=2.0).status_code
+            self._client = httpx.Client(timeout=2.0)
+        return self._client.post(url, content=body, headers=headers).status_code
 
     def collect(self) -> list[dict[str, Any]]:
         """Events for every status change since the last call (also queued for delivery)."""

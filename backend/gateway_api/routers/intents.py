@@ -152,7 +152,8 @@ def get_intent(intent_id: str, request: Request, p: Principal = Depends(current_
 
 
 _TIMELINE = {
-    "intent.authorized": ("AUTHORIZED", lambda pl: f"authorized {pl.get('operation')} of {pl.get('amount_minor')} minor "
+    "intent.authorized": ("AUTHORIZED", lambda pl: f"authorized {pl.get('operation')} of "
+                                                   f"{ser.amount(pl.get('amount_minor'), pl.get('currency') or 'INR')} "
                                                    f"{pl.get('currency')} on {pl.get('order_id')}"),
     "proposal.decided": ("DECISION", lambda pl: f"{pl.get('decision')}"
                          + (f" ({', '.join(f['check'] for f in pl.get('findings', []))})" if pl.get("findings") else "")),

@@ -36,6 +36,17 @@ DEMO_ORDERS = [  # near-miss IDs on purpose: ORD-204 / ORD-240 / ORD-2041
 ]
 
 
+_provider: httpx.Client | None = None
+
+
+def _provider_client() -> httpx.Client:
+    # Reused across calls: building a client per request costs ~1 s on Windows (TLS context setup).
+    global _provider
+    if _provider is None or str(_provider.base_url).rstrip("/") != settings.PAYMENT_SERVICE_URL.rstrip("/"):
+        _provider = httpx.Client(base_url=settings.PAYMENT_SERVICE_URL, timeout=5)
+    return _provider
+
+
 def register_provider_order(sim: Any, order_id: str, customer_id: str, currency: str, amount_minor: int) -> None:
     if sim is not None:
         from paysim import Order as SimOrder
@@ -43,9 +54,8 @@ def register_provider_order(sim: Any, order_id: str, customer_id: str, currency:
         sim.add_order(SimOrder(order_id, customer_id, currency, amount_minor))
         return
     try:
-        httpx.post(f"{settings.PAYMENT_SERVICE_URL}/v1/orders", timeout=5,
-                   json={"order_id": order_id, "customer_id": customer_id, "currency": currency,
-                         "amount_minor": amount_minor}).raise_for_status()
+        _provider_client().post("/v1/orders", json={"order_id": order_id, "customer_id": customer_id,
+                                                     "currency": currency, "amount_minor": amount_minor}).raise_for_status()
     except httpx.HTTPError as exc:
         log.warning("Could not register order %s with the provider: %s", order_id, exc)
 

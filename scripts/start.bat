@@ -39,7 +39,7 @@ if exist ".venv\Scripts\activate.bat" (
     echo [INFO] Using virtual environment venv
 )
 
-python -c "import fastapi, uvicorn, sqlalchemy, httpx, numpy, pydantic_settings, jwt, argon2" >nul 2>&1
+python -c "import fastapi, uvicorn, sqlalchemy, httpx, numpy, pydantic_settings, jwt, argon2, dotenv" >nul 2>&1
 if errorlevel 1 (
     echo [INFO] Installing Python dependencies...
     python -m pip install -r backend\requirements.txt || goto :fail
@@ -48,15 +48,25 @@ if errorlevel 1 (
 :: Fill in JWT_SECRET and WEBHOOK_SECRET in .env (generated locally, never committed).
 python scripts\init_env.py || goto :fail
 
-if not exist "frontend\node_modules" (
-    echo [INFO] Installing dashboard dependencies...
-    pushd frontend
-    call npm install || (popd & goto :fail)
-    popd
+:: Install when node_modules is missing or no longer matches package.json (e.g. after a pull).
+pushd frontend
+set "_npm_ok=1"
+if not exist "node_modules" set "_npm_ok="
+if defined _npm_ok (
+    call npm ls --depth=0 >nul 2>&1 || set "_npm_ok="
 )
+if not defined _npm_ok (
+    echo [INFO] Installing dashboard dependencies...
+    call npm install || (popd & goto :fail)
+    rem Vite's pre-bundled dependency cache can outlive an upgrade and break the dev server.
+    if exist "node_modules\.vite" rmdir /s /q "node_modules\.vite"
+)
+popd
 
 :: ------------------------------- 3. stop a previous IntentGuard run, check ports
 call :stop_all quiet
+:: A database from an earlier schema is moved aside as a backup (with the simulator state), not deleted.
+python scripts\check_db.py || goto :fail
 call :require_free 8001 || goto :fail
 call :require_free 8000 || goto :fail
 

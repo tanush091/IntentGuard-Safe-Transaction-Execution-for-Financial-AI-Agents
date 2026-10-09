@@ -29,6 +29,8 @@ htmlcov/
 *.log
 paysim_state.json
 paysim_state.json.tmp
+# Backups made by scripts/check_db.py when a database predates the current schema
+*.bak
 
 # IDEs & OS
 .vscode/

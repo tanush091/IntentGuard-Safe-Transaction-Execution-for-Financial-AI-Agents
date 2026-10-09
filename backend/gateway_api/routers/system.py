@@ -11,8 +11,12 @@ from sqlalchemy import text
 
 from gateway_api.errors import ApiError
 from gateway_api.routers.deps import guard_of, simulator_only
-from gateway_api.schemas import FaultIn
-from gateway_api.security import Principal, require
+from gateway_api import seed as seed_mod
+from gateway_api.schemas import DemoOrderIn, FaultIn
+from gateway_api.security import Principal, now, require
+from gateway_api.serializers import amount
+from intentguard.models import Order
+from intentguard.money import to_minor
 
 router = APIRouter(tags=["system"])
 dev = APIRouter(prefix="/dev", tags=["dev (simulator only)"], dependencies=[Depends(simulator_only)])
@@ -118,3 +122,19 @@ def ledger(request: Request, order_id: str | None = None, p: Principal = Depends
 @dev.post("/worker/tick", summary="Run one worker pass now")
 def tick(request: Request, p: Principal = Depends(require("dev"))) -> dict[str, int]:
     return {"processed": len(guard_of(request).tick_detailed())}
+
+
+@dev.post("/orders", status_code=201, summary="Create a fresh demo order (so demo scenarios can be repeated)")
+def demo_order(body: DemoOrderIn, request: Request, p: Principal = Depends(require("dev"))) -> dict[str, Any]:
+    guard = guard_of(request)
+    with guard.session() as s:
+        # Numeric (ORD-9xxxxxxx) so the rule-based ticket extractor recognises it, like a real order id.
+        n = int(now() * 1000) % 10**7
+        while s.get(Order, f"ORD-9{n:07d}") is not None:
+            n = (n + 1) % 10**7
+    order_id, minor = f"ORD-9{n:07d}", to_minor(body.amount, body.currency)
+    guard.upsert_order(order_id, body.customer_id, body.currency.upper(), minor)
+    seed_mod.register_provider_order(request.app.state.sim, order_id, body.customer_id, body.currency.upper(), minor)
+    guard.record_audit("dev.order_created", p.sub, order_id=order_id, customer_id=body.customer_id, amount_minor=minor)
+    return {"order_id": order_id, "customer_id": body.customer_id, "amount": amount(minor, body.currency.upper()),
+            "currency": body.currency.upper()}
