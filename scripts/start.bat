@@ -26,9 +26,17 @@ if not errorlevel 1 (
 :: ------------------------------------------------------------- 2. python env
 set "VENV_ACTIVATE="
 if exist ".venv\Scripts\activate.bat" (
-    call .venv\Scripts\activate.bat
-    set "VENV_ACTIVATE=call .venv\Scripts\activate.bat && "
+    call "%ROOT%\.venv\Scripts\activate.bat"
+    set "VENV_ACTIVATE=call "%ROOT%\.venv\Scripts\activate.bat" && "
     echo [INFO] Using virtual environment .venv
+) else if exist "backend\.venv\Scripts\activate.bat" (
+    call "%ROOT%\backend\.venv\Scripts\activate.bat"
+    set "VENV_ACTIVATE=call "%ROOT%\backend\.venv\Scripts\activate.bat" && "
+    echo [INFO] Using virtual environment backend\.venv
+) else if exist "venv\Scripts\activate.bat" (
+    call "%ROOT%\venv\Scripts\activate.bat"
+    set "VENV_ACTIVATE=call "%ROOT%\venv\Scripts\activate.bat" && "
+    echo [INFO] Using virtual environment venv
 )
 
 python -c "import fastapi, uvicorn, sqlalchemy, httpx, numpy, pydantic_settings" >nul 2>&1
