@@ -13,7 +13,7 @@ from gateway_api import idempotency
 from gateway_api import serializers as ser
 from gateway_api.errors import ApiError
 from gateway_api.pagination import paginate
-from gateway_api.reconciliation import matching_run
+from gateway_api.reconciliation import matching_run, start_matching_run
 from gateway_api.routers.deps import guard_of, load_intent
 from gateway_api.schemas import MismatchResolveIn
 from gateway_api.security import Principal, now, require
@@ -96,8 +96,9 @@ def trigger_run(request: Request, background: BackgroundTasks,
         result = matching_run(guard, p.sub)
         return {"run_id": ser.ref("run", result["run_id"]), "status": "finished", **{
             k: v for k, v in result.items() if k != "run_id"}}
-    background.add_task(matching_run, guard, p.sub)
-    return {"status": "started"}
+    run_id = start_matching_run(guard, p.sub)
+    background.add_task(matching_run, guard, p.sub, run_id)
+    return {"run_id": ser.ref("run", run_id), "status": "started"}
 
 
 @router.get("/reconciliation/mismatches", summary="Mismatches found by matching runs and webhooks")

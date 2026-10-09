@@ -52,13 +52,18 @@ def _field_kinds(intent: Intent, e: Any) -> list[str]:
     return kinds
 
 
-def matching_run(guard: IntentGuard, triggered_by: str) -> dict[str, Any]:
-    started = now()
+def start_matching_run(guard: IntentGuard, triggered_by: str) -> int:
+    """Record a matching run as started (so callers get its id at once); matching_run() does the work."""
     with guard.session() as s, s.begin():
-        run = ReconciliationRun(kind="MATCHING", triggered_by=triggered_by, started_at=started)
+        run = ReconciliationRun(kind="MATCHING", triggered_by=triggered_by, started_at=now())
         s.add(run)
         s.flush()
-        run_id = run.id
+        return run.id
+
+
+def matching_run(guard: IntentGuard, triggered_by: str, run_id: int | None = None) -> dict[str, Any]:
+    if run_id is None:
+        run_id = start_matching_run(guard, triggered_by)
     with guard.session() as s:
         orders = [o.id for o in s.scalars(select(Order))]
         intents = {i.id: i for i in s.scalars(select(Intent))}

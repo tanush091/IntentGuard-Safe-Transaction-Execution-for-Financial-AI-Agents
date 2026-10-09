@@ -175,3 +175,14 @@ def test_amount_with_too_many_decimals_is_a_validation_error_not_a_500(api):
         "customer_id": "C-17", "order_id": "ORD-204", "operation": "REFUND", "authorized_amount": "1500.001",
         "currency": "INR"})
     assert r.status_code == 422 and r.json()["error"]["code"] in ("INVALID_AMOUNT", "VALIDATION_ERROR")
+
+
+def test_triggered_matching_run_returns_its_id_and_is_listed(api_inprocess):
+    """API.md 5: POST /reconciliation/runs answers 202 with the run id; the run then appears in the list."""
+    api = api_inprocess
+    meera = api.login("rev-meera")
+    r = api.client.post("/api/reconciliation/runs", headers=meera)
+    assert r.status_code == 202 and r.json()["run_id"].startswith("RUN-")
+    runs = api.client.get("/api/reconciliation/runs", headers=meera, params={"kind": "MATCHING"}).json()["items"]
+    match = [x for x in runs if x["run_id"] == r.json()["run_id"]]
+    assert match and match[0]["finished_at"] is not None and match[0]["triggered_by"] == "rev-meera"
