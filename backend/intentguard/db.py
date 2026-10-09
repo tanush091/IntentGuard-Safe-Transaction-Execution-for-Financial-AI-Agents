@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import threading
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool, StaticPool
 
-from intentguard.models import Base
+from intentguard.models import SCHEMA_VERSION, Base
 
 
 def make_engine(url: str, *, durable: bool = True) -> Engine:
@@ -79,5 +79,33 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
+class SchemaMismatch(RuntimeError):
+    """The database was created by an incompatible version of IntentGuard."""
+
+
+# Tables that only an earlier schema had; their presence means the database predates SCHEMA_VERSION.
+_LEGACY_TABLES = {"operators", "proposals", "attempts", "audit_events"}
+# First values of the identifier sequences: INT-1001, ATT-001.
+_COUNTER_STARTS = {"intent": 1000, "attempt": 0}
+
+
 def init_schema(engine: Engine) -> None:
+    """Create the schema, or check that an existing database has the current schema version."""
+    existing = set(inspect(engine).get_table_names())
+    if existing:
+        version = None
+        if "schema_meta" in existing:
+            with engine.connect() as c:
+                version = c.execute(text("SELECT value FROM schema_meta WHERE key = 'schema_version'")).scalar()
+        if existing & _LEGACY_TABLES or ("intents" in existing and version != SCHEMA_VERSION):
+            raise SchemaMismatch(
+                f"the database at {engine.url!r} was created by an earlier IntentGuard version "
+                f"(schema {version or 'unknown'}, need {SCHEMA_VERSION}); delete it or point DATABASE_URL elsewhere"
+            )
     Base.metadata.create_all(engine)
+    with engine.begin() as c:
+        if c.execute(text("SELECT value FROM schema_meta WHERE key = 'schema_version'")).scalar() is None:
+            c.execute(text("INSERT INTO schema_meta (key, value) VALUES ('schema_version', :v)"), {"v": SCHEMA_VERSION})
+        for name, start in _COUNTER_STARTS.items():
+            if c.execute(text("SELECT value FROM counters WHERE name = :n"), {"n": name}).scalar() is None:
+                c.execute(text("INSERT INTO counters (name, value) VALUES (:n, :v)"), {"n": name, "v": start})

@@ -120,15 +120,15 @@ def test_audit_log_is_append_only_and_tamper_evident(world):
     with world.guard.session() as s:
         assert audit.verify(s)["ok"]
     with world.guard.session() as s, pytest.raises(DBAPIError):
-        s.execute(text("UPDATE audit_events SET kind = 'forged' WHERE seq = 1"))
+        s.execute(text("UPDATE audit_logs SET kind = 'forged' WHERE seq = 1"))
         s.commit()
     with world.guard.session() as s, pytest.raises(DBAPIError):
-        s.execute(text("DELETE FROM audit_events"))
+        s.execute(text("DELETE FROM audit_logs"))
         s.commit()
     # Someone with schema access drops the trigger and rewrites history: verification catches it.
     with world.guard.session() as s:
         s.execute(text("DROP TRIGGER audit_no_update"))
-        s.execute(text("UPDATE audit_events SET payload = '{}' WHERE seq = 2"))
+        s.execute(text("UPDATE audit_logs SET payload = '{}' WHERE seq = 2"))
         s.commit()
         result = audit.verify(s)
     assert not result["ok"] and result["broken_at_seq"] == 2

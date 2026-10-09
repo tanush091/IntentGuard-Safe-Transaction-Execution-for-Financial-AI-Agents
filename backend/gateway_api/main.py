@@ -42,7 +42,7 @@ from intentguard.clock import SystemClock
 from intentguard.db import init_schema, make_engine, make_session_factory
 from intentguard.domain import IllegalTransition
 from intentguard.engine import AuthorizationError, ConflictError, IntentGuard, NotFound, SubmitResult
-from intentguard.models import Attempt, AuditEvent, Effect, Intent, Operator, Order, ProposalRecord, ReviewCase
+from intentguard.models import Attempt, AuditEvent, Effect, GatewayDecision, Intent, Order, ReviewCase, User, row_dict
 from intentguard.money import fmt, to_minor
 
 log = logging.getLogger("intentguard.gateway")
@@ -74,7 +74,7 @@ def build_provider() -> tuple[Any, Any]:
 
 def seed_demo(guard: IntentGuard, sim: Any) -> None:
     with guard.session() as s:
-        if s.scalar(select(func.count()).select_from(Operator)):
+        if s.scalar(select(func.count()).select_from(User)):
             return
     for oid, name, ops, limit in DEMO_OPERATORS:
         guard.upsert_operator(oid, name, ops, to_minor(limit, "INR"))
@@ -161,7 +161,7 @@ def guard_of(request: Request) -> IntentGuard:
 
 
 def _row(obj: Any) -> dict[str, Any]:
-    d = {c.key: getattr(obj, c.key) for c in obj.__table__.columns}
+    d = row_dict(obj)
     if "amount_minor" in d and "currency" in d:
         d["amount_display"] = fmt(d["amount_minor"], d["currency"])
     return d
@@ -200,7 +200,7 @@ def run_tick(request: Request) -> dict[str, int]:
 @app.get("/api/operators", tags=["admin"])
 def list_operators(request: Request) -> list[dict[str, Any]]:
     with guard_of(request).session() as s:
-        return [_row(o) for o in s.scalars(select(Operator).order_by(Operator.id))]
+        return [_row(o) for o in s.scalars(select(User).order_by(User.id))]
 
 
 @app.post("/api/operators", tags=["admin"], status_code=201)
@@ -308,8 +308,7 @@ def reconcile(intent_id: str, request: Request) -> dict[str, str]:
 
 @app.post("/api/intents/{intent_id}/revoke", tags=["intents"])
 def revoke(intent_id: str, body: RevokeIn, request: Request) -> dict[str, str]:
-    guard_of(request).revoke(intent_id, body.actor)
-    return {"intent_state": "CANCELLED"}
+    return {"intent_state": guard_of(request).cancel(intent_id, body.actor).value}
 
 
 # ------------------------------------------------------------------ reviews
@@ -369,7 +368,7 @@ def metrics(request: Request) -> dict[str, Any]:
         ).one()
         return {
             "intents_by_state": grouped(Intent.state),
-            "proposals_by_decision": grouped(ProposalRecord.decision),
+            "proposals_by_decision": grouped(GatewayDecision.decision),
             "attempts_by_status": grouped(Attempt.status),
             "effects_by_class": grouped(Effect.classification),
             "live_unintended_effects": {"count": live_bad[0], "amount_minor": int(live_bad[1])},

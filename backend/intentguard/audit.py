@@ -35,6 +35,7 @@ def append(
     prev = prev or GENESIS
     ev = AuditEvent(
         chain_id=chain_id,
+        intent_id=None if chain_id == SYSTEM_CHAIN else chain_id,
         kind=kind,
         actor=actor,
         payload=payload,
