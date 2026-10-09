@@ -1,38 +1,36 @@
-# Task Breakdown (TASKS.md) — IntentGuard
+# Open tasks
 
-## Phase 1: Data Layer & Identity Schemas
-- [x] **TASK-001**: Define Pydantic types and schemas for authorizations, proposals, attempts, effects, decisions, and review cases (`src/schemas/types.py`)
-- [x] **TASK-002**: Implement SQLAlchemy ORM models for durable effects ledger and audit log (`src/database/models.py`)
-- [x] **TASK-003**: Create database connection and initialization lifecycle (`src/database/connection.py`)
+Real open items only. Completed work, and the earlier prototype's task list, are in git history.
 
-## Phase 2: Mock Payment Service & Fault Injection
-- [x] **TASK-004**: Implement mock payment service with refund APIs (`POST /refunds`, `GET /refunds`, `POST /cancel`)
-- [x] **TASK-005**: Add secondary payment authorization and hold workflow (`POST /payments/authorizations`)
-- [x] **TASK-006**: Build configurable fault injection engine for timeouts before/after execution, 503 outages, delayed statuses, and amount corruptions (`src/mock_payment/faults.py`)
+## Research
 
-## Phase 3: Safety Gateway & State Machine
-- [x] **TASK-007**: Implement formal transaction state machine with legal transition enforcement (`src/gateway/state_machine.py`)
-- [x] **TASK-008**: Build gateway validator for order, customer, amount, currency, and concurrency checks (`src/gateway/validator.py`)
-- [x] **TASK-009**: Implement active reconciliation engine to discover provider effects upon `UNKNOWN` outcomes (`src/gateway/reconciliation.py`)
-- [x] **TASK-010**: Implement state-aware recovery policies (cancel-and-verify, controlled retry, human review escalation) (`src/gateway/recovery.py`)
-- [x] **TASK-011**: Assemble Gateway coordinator engine and REST API (`src/gateway/engine.py`, `src/gateway/api.py`)
+- [ ] **Real-LLM evaluation.** Run `python -m bench run --llm-reviewer` (baseline D with a real
+      model) and run the agent endpoint with 2–3 models on generated tickets; measure their error
+      rates and whether IntentGuard's guarantees still hold. No such run exists yet.
+- [ ] **Provenance metadata for the cited run.** `experiments/results/latest/` records commit
+      `283c6bb`, which predates the benchmark code. A rerun from committed code reproduced every
+      outcome exactly (2026-10-09). Decide whether to replace `latest/` with a run from a committed
+      tree so the metadata is clean (latency values would change), then update the docs.
+- [ ] **Paper finalization.** Verify every entry in `docs/research/references.md` against its
+      primary source, finish related work, format for a venue
+      (`docs/research/paper/outline.md`).
+- [ ] Research extensions (no code yet): approvals expressed as ranges or multiple lines; learning
+      the absence window per provider; multi-step operations with compensation; reducing human
+      reviews without losing detection.
 
-## Phase 4: AI Agents
-- [x] **TASK-012**: Build scripted agents with faithful and flawed profiles for reproducible benchmarks (`src/agent/scripted_agent.py`)
-- [x] **TASK-013**: Implement natural language customer support extraction agent with offline deterministic parser fallback (`src/agent/llm_agent.py`)
+## Engineering
 
-## Phase 5: Empirical Benchmark & Ablations
-- [x] **TASK-014**: Create synthetic scenario generator producing 250 reproducible scenarios with fixed seeds across 12 failure modes (`src/experiments/generator.py`)
-- [x] **TASK-015**: Implement 4 baseline architectures (Direct Access, Fixed Validation, Idempotency Alone, LLM Reviewer) alongside IntentGuard (`src/experiments/baselines.py`)
-- [x] **TASK-016**: Implement 6 ablation studies isolating individual protocol components (`src/experiments/ablations.py`)
-- [x] **TASK-017**: Build benchmark execution suite and export results to JSON (`src/experiments/runner.py`, `run_benchmark.py`)
-
-## Phase 6: Observability Dashboard & UX
-- [x] **TASK-018**: Build modern glassmorphic dashboard interface (`src/dashboard/index.html`, `style.css`)
-- [x] **TASK-019**: Implement interactive client-side logic for 4 prescribed demos, custom transaction submission, live visual state machine, and review case resolution (`src/dashboard/app.js`)
-- [x] **TASK-020**: Mount static dashboard routes on FastAPI gateway (`src/gateway/api.py`)
-
-## Phase 7: Verification & Research Deliverables
-- [x] **TASK-021**: Create comprehensive `pytest` test suites across all modules (`tests/`)
-- [x] **TASK-022**: Author complete academic research paper manuscript (`RESEARCH_PAPER_MANUSCRIPT.md`)
-- [x] **TASK-023**: Configure multi-container Docker Compose deployment (`docker-compose.yml`, `Dockerfile`)
+- [ ] **Exercise PostgreSQL in CI**: run the test suite against a PostgreSQL service container
+      (row locks, the PL/pgSQL audit trigger, the partial unique index).
+- [ ] **Read LLM and provider settings from `.env`.** `LLM_*`, `OPENAI_*`, `GEMINI_API_KEY`,
+      `OLLAMA_BASE_URL` and `PAYSIM_*` are read with `os.getenv`, so values in `.env` are ignored;
+      only the gateway's own settings load `.env`.
+- [ ] **Missing tests**: the gateway's `BALANCE_EXCEEDED` check, `revoke`, and the
+      `CONFIRMED_COMPLETED`, `CONFIRMED_NO_EFFECT` and `CLOSED_UNFULFILLED` review resolutions.
+- [ ] **Two gateways, one database**: a concurrency test with two gateway processes.
+- [ ] **Idempotency-key expiry**: scenarios where a retry happens after the provider forgets the key (simulator TTL 24 h).
+- [ ] **Authentication and roles**: operators approve, reviewers resolve, agents only propose. The APIs currently have no authentication.
+- [ ] **Re-render `docs/diagrams/intentguard_architecture.png`**: the `.mmd` and `.html` sources were updated to the new paths, but the PNG still shows the old ones.
+- [ ] **Real provider sandbox adapter** (e.g. Stripe or Razorpay test mode) in `backend/intentguard/providers/`.
+- [ ] Dashboard UI tests (CI only checks that the frontend builds).
+- [ ] Monitoring: metrics and alerts for unknown outcomes, review backlog and open discrepancy amounts.

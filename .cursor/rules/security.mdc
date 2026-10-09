@@ -1,11 +1,11 @@
 ---
-description: Security Requirements and Boundary Policies
+description: Security requirements and boundary policies
 globs: *
 ---
-# Security Rules
+# Security rules
 
-- Never expose API keys or credentials in code or repository commits.
-- Use `.env.example` for secret templates; load values via `src/config.py`.
-- Enforce strict parameter validation on amounts (`0 < amount <= authorized_amount`).
-- Treat AI agents as untrusted callers.
-- Preserve immutable audit logging for all transactions and reconciliation checks.
+- Simulation only: never add real payment credentials, live provider SDKs or real banking endpoints.
+- Never commit secrets. `.env` is gitignored; `.env.example` holds placeholders only. Gateway settings load through `backend/gateway_api/settings.py`.
+- Treat AI agents as untrusted callers: a proposal executes only if it matches the durable intent exactly.
+- Never report an effect as completed or reversed without the provider's read-back.
+- The audit log is append-only and hash-chained; never update or delete audit events.

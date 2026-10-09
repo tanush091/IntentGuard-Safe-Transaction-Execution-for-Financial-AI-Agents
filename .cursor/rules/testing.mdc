@@ -1,11 +1,11 @@
 ---
-description: Testing and Quality Assurance Rules
-globs: tests/**/*.py
+description: Testing and quality rules
+globs: backend/tests/**/*.py
 ---
-# Testing Rules
+# Testing rules
 
-- Organize tests strictly into `tests/unit/`, `tests/integration/`, and `tests/e2e/`.
-- Every feature must have automated test coverage.
-- Run `python -m pytest` after changes and fix failing tests before marking complete.
-- Verify both positive paths and negative failure/fault injection paths.
-- Keep tests isolated using in-memory SQLite fixtures or fresh session teardowns.
+- Tests live in `backend/tests/` and run with `cd backend && python -m pytest` (42 tests).
+- Use the `make_world` fixture (`backend/tests/conftest.py`): a gateway, a simulator and a simulated clock on a temporary SQLite database.
+- Cover failure and fault-injection paths, not only the happy path.
+- A new safeguard needs an ablation test in `test_ablations.py` showing it changes behaviour.
+- Fix failing tests before marking work complete; never weaken an assertion to make a test pass.

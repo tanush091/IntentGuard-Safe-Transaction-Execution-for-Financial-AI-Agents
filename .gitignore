@@ -14,18 +14,21 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
-pytest_output.txt
+.hypothesis/
 
 # Environment & Secrets
 .env
 .env.local
 .env.*.local
 
-# Databases & Persistence
+# Databases & Persistence (gateway SQLite files, simulator state)
 *.db
+*.db-wal
+*.db-shm
 *.sqlite3
-intentguard.db
 *.log
+paysim_state.json
+paysim_state.json.tmp
 
 # IDEs & OS
 .vscode/
@@ -41,13 +44,8 @@ dist/
 build/
 .npm/
 
-# Experiment generated temp files
-experiments/results/temp/
-experiments/results/quick/
-
-# Simulator state and benchmark scratch
-paysim_state.json
-paysim_state.json.tmp
-*.db-wal
-*.db-shm
-.hypothesis/
+# Benchmark output: only latest/ and the run it was copied from are kept in git.
+# make bench-quick writes to experiments/results/quick/.
+experiments/results/*/
+!experiments/results/latest/
+!experiments/results/20261005T141650Z/

@@ -1,12 +1,11 @@
 ---
-description: General Development Rules
+description: General development rules
 globs: *
 ---
-# General Rules
+# General rules
 
-- Use strict typing with Pydantic v2 and SQLAlchemy 2.0.
-- Read docs/PRD.md, docs/ARCHITECTURE.md, and docs/MEMORY.md before writing code.
-- Reuse existing components; never duplicate logic.
-- Keep functions small and modular.
-- Do not modify unrelated files.
-- Small, focused, verified commits.
+- Read docs/README.md, docs/architecture/overview.md and RULES.md before writing code.
+- Python 3.12+, Pydantic v2, SQLAlchemy 2.0, type annotations.
+- Reuse existing components; do not duplicate logic. Keep functions small.
+- Do not modify unrelated files. Small, focused, verified commits.
+- Cite only benchmark numbers that exist in experiments/results/latest/summary.md or summary.json.

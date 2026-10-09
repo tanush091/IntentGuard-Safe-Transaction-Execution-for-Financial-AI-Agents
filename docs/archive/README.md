@@ -27,4 +27,14 @@ Current documentation: [../README.md](../README.md).
 | `spec/01`–`spec/10` | The original specification. Its demo flow is reproduced in [../operations/demo.md](../operations/demo.md); its paper outline is replaced by [../research/paper/outline.md](../research/paper/outline.md) |
 | `diagrams/architecture.mmd`, `diagrams/sequence-diagram.mmd` | [../diagrams/intentguard_architecture.mmd](../diagrams/intentguard_architecture.mmd) |
 
+## Removed from the repository root
+
+- `PHASE_0.md`: a short summary of the earlier build, with absolute `file:///` links and the
+  unmeasured numbers. The fuller document it pointed to is [PHASE_0.md](PHASE_0.md) here.
+- `ANTIGRAVITY_MASTER_PROMPT.md`: the original build prompt. Its safety rules (simulation only,
+  no real credentials, no invented results) are kept in `CONTRIBUTING.md` and `RULES.md`.
+- `PROJECT_GUIDE.md`: a guide to the current build. Its content was moved into `docs/` (product,
+  architecture, operations, research). Dropped: the FAQ and the suggestion to replay data from
+  another project, which had no code behind it.
+
 See also [UNSORTED.md](UNSORTED.md).
