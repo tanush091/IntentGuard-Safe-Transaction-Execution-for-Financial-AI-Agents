@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from intentguard.config import ProtocolConfig
 
+# Repository root (backend/gateway_api/settings.py -> ../..), so the root .env and
+# experiments/results are found whether the gateway is started from the root or from backend/.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # A .env in the working directory overrides the one at the repository root.
+    model_config = SettingsConfigDict(env_file=(REPO_ROOT / ".env", ".env"), env_file_encoding="utf-8",
+                                      extra="ignore")
 
     DATABASE_URL: str = "sqlite:///./intentguard_gateway.db"
     # "http" talks to provider_api over the network; "inprocess" embeds the simulator (zero setup).
@@ -21,7 +29,7 @@ class Settings(BaseSettings):
     POLL_INTERVAL_S: float = 5.0
 
     DEMO_SEED: bool = True
-    RESULTS_DIR: str = "experiments/results"
+    RESULTS_DIR: str = str(REPO_ROOT / "experiments" / "results")
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     def protocol(self) -> ProtocolConfig:

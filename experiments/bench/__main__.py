@@ -1,5 +1,5 @@
 """
-Command line:
+Command line (run from experiments/):
 
   python -m bench run [--seeds 10] [--start-seed 42] [--scenarios 300] [--arms all] [--workers N]
   python -m bench list-arms
@@ -20,6 +20,9 @@ from typing import Any, Callable
 from bench import report
 from bench.arms import ALL_ARMS, arm_meta
 from bench.runner import run_job
+
+# experiments/results, wherever the command is started from.
+DEFAULT_OUT = Path(__file__).resolve().parents[1] / "results"
 
 
 def _llm_reviewer() -> Callable[[str], Any]:
@@ -94,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--scenarios", type=int, default=300)
     run.add_argument("--arms", default="all", help="comma-separated arm names, or 'all'")
     run.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
-    run.add_argument("--out", default="experiments/results")
+    run.add_argument("--out", default=str(DEFAULT_OUT))
     run.add_argument("--llm-reviewer", action="store_true", help="use a real LLM for baseline D")
     run.set_defaults(func=cmd_run)
     sub.add_parser("list-arms").set_defaults(func=lambda _a: print("\n".join(ALL_ARMS)) or 0)

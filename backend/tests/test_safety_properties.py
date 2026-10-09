@@ -25,7 +25,7 @@ from intentguard.models import ReviewCase
 from paysim import FaultKind, TxStatus
 from sqlalchemy import select
 
-from tests_intentguard.conftest import make_world
+from tests.conftest import make_world
 
 FAULTS = st.sampled_from([
     (FaultKind.OUTAGE, {}),

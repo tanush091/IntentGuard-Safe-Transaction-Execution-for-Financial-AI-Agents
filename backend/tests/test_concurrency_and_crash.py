@@ -8,7 +8,7 @@ from intentguard import Decision, IntentState
 from intentguard.engine import Hooks, SimulatedCrash
 from paysim import FaultKind
 
-from tests_intentguard.conftest import make_world
+from tests.conftest import make_world
 
 
 @pytest.mark.parametrize("agents", [2, 4, 8])

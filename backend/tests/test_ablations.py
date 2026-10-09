@@ -16,7 +16,7 @@ from intentguard.models import Attempt
 from paysim import FaultKind, TxStatus
 from sqlalchemy import select
 
-from tests_intentguard.conftest import make_world
+from tests.conftest import make_world
 
 FULL = ProtocolConfig()
 

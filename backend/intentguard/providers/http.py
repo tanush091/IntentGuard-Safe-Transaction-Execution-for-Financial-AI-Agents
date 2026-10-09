@@ -1,4 +1,4 @@
-"""Adapter for the mock-payment-service HTTP API (or any provider exposing the same contract)."""
+"""Adapter for the mock provider HTTP API in provider_api/ (or any provider exposing the same contract)."""
 
 from __future__ import annotations
 

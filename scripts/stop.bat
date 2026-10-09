@@ -1,7 +1,8 @@
 @echo off
 setlocal EnableExtensions
 title IntentGuard Stopper
-cd /d "%~dp0"
+:: Run from the repository root (this script lives in scripts\).
+cd /d "%~dp0.."
 
 echo Stopping IntentGuard services...
 

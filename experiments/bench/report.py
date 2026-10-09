@@ -157,7 +157,7 @@ def to_markdown(summary: dict[str, Any]) -> str:
         f"(± half-width). Counts are per {meta['scenarios_per_seed']} scenarios.",
         "",
         "All arms receive identical agent behaviour and provider faults and are scored by the same oracle "
-        "against the provider's ground-truth ledger (see `bench/scoring.py`).",
+        "against the provider's ground-truth ledger (see `experiments/bench/scoring.py`).",
         "",
         "## Baselines vs. IntentGuard",
         "",

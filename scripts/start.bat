@@ -1,7 +1,9 @@
 @echo off
 setlocal EnableExtensions
 title IntentGuard Launcher
-cd /d "%~dp0"
+:: Run from the repository root (this script lives in scripts\).
+cd /d "%~dp0.."
+set "ROOT=%CD%"
 
 echo ==============================================================================
 echo                      STARTING INTENTGUARD SERVICES
@@ -32,7 +34,7 @@ if exist ".venv\Scripts\activate.bat" (
 python -c "import fastapi, uvicorn, sqlalchemy, httpx, numpy, pydantic_settings" >nul 2>&1
 if errorlevel 1 (
     echo [INFO] Installing Python dependencies...
-    python -m pip install -r requirements.txt || goto :fail
+    python -m pip install -r backend\requirements.txt || goto :fail
 )
 
 if not exist "frontend\node_modules" (
@@ -58,15 +60,15 @@ if not "%DASH_PORT%"=="3000" echo [INFO] Port 3000 is used by another program; t
 
 :: ---------------------------------------------------------------- 4. launch
 echo [1/3] Starting mock payment provider on port 8001...
-start "IntentGuard - Provider (8001)" cmd /k "cd /d "%~dp0" && %VENV_ACTIVATE%python -m uvicorn provider_api.main:app --host 127.0.0.1 --port 8001"
+start "IntentGuard - Provider (8001)" cmd /k "cd /d "%ROOT%" && %VENV_ACTIVATE%cd backend && python -m uvicorn provider_api.main:app --host 127.0.0.1 --port 8001"
 call :wait_for http://127.0.0.1:8001/health "payment provider" || goto :fail
 
 echo [2/3] Starting IntentGuard gateway on port 8000...
-start "IntentGuard - Gateway (8000)" cmd /k "cd /d "%~dp0" && %VENV_ACTIVATE%python -m uvicorn gateway_api.main:app --host 127.0.0.1 --port 8000"
+start "IntentGuard - Gateway (8000)" cmd /k "cd /d "%ROOT%" && %VENV_ACTIVATE%cd backend && python -m uvicorn gateway_api.main:app --host 127.0.0.1 --port 8000"
 call :wait_for http://127.0.0.1:8000/health "gateway" || goto :fail
 
 echo [3/3] Starting dashboard on port %DASH_PORT%...
-start "IntentGuard - Dashboard (%DASH_PORT%)" cmd /k "cd /d "%~dp0frontend" && npm run dev -- --port %DASH_PORT% --strictPort"
+start "IntentGuard - Dashboard (%DASH_PORT%)" cmd /k "cd /d "%ROOT%\frontend" && npm run dev -- --port %DASH_PORT% --strictPort"
 call :wait_for http://localhost:%DASH_PORT% "dashboard" || goto :fail
 
 echo.

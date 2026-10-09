@@ -17,8 +17,8 @@ services:
 
   provider:
     build:
-      context: .
-      dockerfile: deploy/provider.Dockerfile
+      context: ./backend
+    command: ["uvicorn", "provider_api.main:app", "--host", "0.0.0.0", "--port", "8001"]
     environment:
       PAYSIM_STATE_PATH: /data/paysim_state.json
       PAYSIM_SETTLE_DELAY_S: "3"
@@ -29,13 +29,16 @@ services:
 
   gateway:
     build:
-      context: .
-      dockerfile: deploy/gateway.Dockerfile
+      context: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://intentguard:intentguard_secret@postgres:5432/intentguard_db
       PAYMENT_PROVIDER: http
       PAYMENT_SERVICE_URL: http://provider:8001
       CORS_ORIGINS: http://localhost:3000
+      RESULTS_DIR: /app/experiments/results
+    volumes:
+      # Benchmark results shown on the dashboard's Experiments page (read-only).
+      - ./experiments/results:/app/experiments/results:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -43,6 +43,7 @@ build/
 
 # Experiment generated temp files
 experiments/results/temp/
+experiments/results/quick/
 
 # Simulator state and benchmark scratch
 paysim_state.json
