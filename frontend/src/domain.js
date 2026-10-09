@@ -15,7 +15,7 @@ export const STATE_META = {
   EXECUTING: { label: 'Executing', tone: 'cyan', kind: 'active', icon: 'activity' },
   UNKNOWN: { label: 'Verifying', tone: 'cyan', kind: 'verifying', icon: 'search' },
   RECONCILING: { label: 'Verifying', tone: 'cyan', kind: 'verifying', icon: 'search' },
-  DISCREPANCY: { label: 'Needs review', tone: 'amber', kind: 'escalated', icon: 'alert' },
+  DISCREPANCY: { label: 'Discrepancy', tone: 'amber', kind: 'escalated', icon: 'alert' },
   CANCEL_REQUESTED: { label: 'Cancelling', tone: 'amber', kind: 'escalated', icon: 'undo' },
   ESCALATED: { label: 'Needs review', tone: 'amber', kind: 'escalated', icon: 'alert' },
   COMPLETED: { label: 'Completed ✓', tone: 'emerald', kind: 'completed', icon: 'check' },
