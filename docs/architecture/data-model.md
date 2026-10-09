@@ -3,7 +3,7 @@
 Source: [`backend/intentguard/models.py`](../../backend/intentguard/models.py) (SQLAlchemy 2.0),
 schema created by `init_schema` (`Base.metadata.create_all`; there are no migrations).
 Timestamps are float epoch seconds from the injected clock. Money is stored as integers in minor
-units (`amount_minor`, e.g. paise for INR), and the API converts with `intentguard/money.py`.
+units (`amount_minor`, e.g. paise for INR), and the API converts with `backend/intentguard/money.py`.
 
 ## Tables
 

@@ -22,7 +22,7 @@ Stated before reading the results; each maps to metrics defined below.
 
 ## Scenarios
 
-`bench/scenarios.py`. For each seed, 300 scenarios are drawn from 30 categories with fixed
+`experiments/bench/scenarios.py`. For each seed, 300 scenarios are drawn from 30 categories with fixed
 relative weights. **The seed controls the category mix**, not just identifiers, so different seeds
 produce different mixes.
 
@@ -53,7 +53,7 @@ exceed the 30 s absence window), settle delays of 20–180 s, wrong-amount facto
 
 ## Agent error model and runtime
 
-`bench/agent.py`, `bench/runner.py`. The **same agent behaviour is used for every arm.**
+`experiments/bench/agent.py`, `experiments/bench/runner.py`. The **same agent behaviour is used for every arm.**
 
 - Error modes: ×10 amount, rupee/paisa unit confusion, near-miss order (same customer), transposed
   order (other customer), wrong customer, wrong currency.
@@ -70,7 +70,7 @@ exceed the 30 s absence window), settle delays of 20–180 s, wrong-amount facto
 
 ## Architectures (arms)
 
-`bench/arms.py`. Every arm receives the same proposals, talks to the same simulator, and is scored
+`experiments/bench/arms.py`. Every arm receives the same proposals, talks to the same simulator, and is scored
 by the same oracle. Arms differ only in what stands between agent and provider.
 
 | Arm | What stands between agent and provider |
@@ -105,7 +105,7 @@ That is 15 arms in total: 4 baselines, E, and 10 ablations.
 
 ## Oracle
 
-`bench/scoring.py`. After a **900 s simulated settlement horizon** (the runner advances the clock
+`experiments/bench/scoring.py`. After a **900 s simulated settlement horizon** (the runner advances the clock
 to each arm's next due time so background work completes), each scenario is scored from the
 **provider's ground-truth ledger** (`sim.all_transactions()`, ignoring search visibility),
 identically for every arm.

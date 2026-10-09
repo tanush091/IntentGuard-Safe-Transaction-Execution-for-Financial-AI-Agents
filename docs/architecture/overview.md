@@ -103,7 +103,7 @@ the merchant and owned by the customer; currency equal to the order's; `0 < amou
 
 ## Background worker and restart
 
-- `worker_loop` in `gateway_api/main.py` calls `IntentGuard.tick()` every `WORKER_INTERVAL_S`
+- `worker_loop` in `backend/gateway_api/main.py` calls `IntentGuard.tick()` every `WORKER_INTERVAL_S`
   (2 s). `tick` processes intents whose `next_check_at` is due: it reconciles, then drives them.
 - Polling backs off while nothing changes: the next check is
   `max(poll_interval_s, min(max_poll_interval_s, 0.5 × seconds since the last state change))`
