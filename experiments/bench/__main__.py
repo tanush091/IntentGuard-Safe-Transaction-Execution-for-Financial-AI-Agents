@@ -27,6 +27,9 @@ DEFAULT_OUT = Path(__file__).resolve().parents[1] / "results"
 
 def _llm_reviewer() -> Callable[[str], Any]:
     from intentguard.agents import LLMExtractor, LLMSettings
+    from intentguard.envfile import load_env
+
+    load_env()  # LLM_* may come from .env
 
     settings = LLMSettings.from_env()
     if settings is None:

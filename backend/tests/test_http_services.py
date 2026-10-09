@@ -1,107 +1,56 @@
 """
-End-to-end over HTTP: the gateway API talks to the provider API through the real HttpProvider
-(the provider app is mounted in-process via httpx's ASGI transport, so no ports are needed).
+End to end over HTTP: the gateway API talks to the provider API through the real HttpProvider
+(the provider app is mounted in-process, so no ports are needed).
 """
 
 from __future__ import annotations
 
-import importlib
 
-import httpx
-import pytest
-from fastapi.testclient import TestClient
+def test_end_to_end_lost_response_over_http(api):
+    h = api.login("op-asha")
+    iid = api.authorize(h)
+    api.fault("TIMEOUT_AFTER_EXECUTION")
 
+    bad = api.propose(h, iid, amount="15000.00")
+    assert bad.status_code == 200  # a decision is not an HTTP error
+    assert bad.json()["decision"] == "REJECT" and bad.json()["reason"] == "AMOUNT_EXCEEDS_AUTHORIZATION"
+    assert bad.json()["state"] == "AUTHORIZED" and bad.json()["verified"] is False
 
-@pytest.fixture
-def services(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAYSIM_STATE_PATH", str(tmp_path / "paysim.json"))
-    monkeypatch.setenv("PAYSIM_SETTLE_DELAY_S", "0")
-    import provider_api.main as provider_main
-
-    provider_main = importlib.reload(provider_main)
-    provider_client = TestClient(provider_main.app)
-
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{(tmp_path / 'gw.db').as_posix()}")
-    monkeypatch.setenv("PAYMENT_PROVIDER", "http")
-    monkeypatch.setenv("DEMO_SEED", "false")
-    import gateway_api.settings as gw_settings
-    import gateway_api.main as gw_main
-
-    importlib.reload(gw_settings)
-    gw_main = importlib.reload(gw_main)
-    from intentguard.providers.http import HttpProvider
-
-    http = HttpProvider("http://provider", client=provider_client)
-    monkeypatch.setattr(gw_main, "build_provider", lambda: (http, None))
-    monkeypatch.setattr(gw_main, "seed_provider_order",
-                        lambda _sim, oid, cust, cur, amt: provider_client.post(
-                            "/v1/orders", json={"order_id": oid, "customer_id": cust, "currency": cur,
-                                                "amount_minor": amt}))
-    with TestClient(gw_main.app) as gateway:
-        yield gateway, provider_client
+    ok = api.client.post(f"/api/intents/{iid}/agent", headers=h, json={}).json()
+    assert ok["decision"] == "ALLOW" and ok["extraction"]["source"] == "rules"
+    detail = api.client.get(f"/api/intents/{iid}", headers=h).json()
+    assert detail["state"] == "COMPLETED" and detail["verified"] is True
+    assert [e["classification"] for e in detail["effects"]] == ["INTENDED"]
+    ledger = api.provider.get("/v1/ledger", params={"order_id": "ORD-204"}).json()
+    assert len(ledger) == 1  # the lost response was reconciled, not repeated
 
 
-def _setup(gateway):
-    assert gateway.post("/api/operators", json={"id": "op-1", "name": "Asha", "permitted_operations": ["REFUND"],
-                                                "limit": "10000"}).status_code == 201
-    assert gateway.post("/api/orders", json={"id": "ORD-204", "customer_id": "C-17", "amount": "5000"}).status_code == 201
-    r = gateway.post("/api/intents", json={"operator_id": "op-1", "customer_id": "C-17", "order_id": "ORD-204",
-                                           "amount": "1500.00", "ticket": "Refund ₹1,500 for ORD-204 to C-17"})
-    assert r.status_code == 201, r.text
-    return r.json()["id"]
-
-
-def test_end_to_end_lost_response_over_http(services):
-    gateway, provider = services
-    iid = _setup(gateway)
-    provider.post("/v1/faults", json={"kind": "TIMEOUT_AFTER_EXECUTION", "order_id": "ORD-204"})
-
-    bad = gateway.post(f"/api/intents/{iid}/proposals", json={
-        "operation": "REFUND", "customer_id": "C-17", "order_id": "ORD-204", "amount": "15000.00"}).json()
-    assert bad["decision"] == "REJECT"
-
-    ok = gateway.post(f"/api/intents/{iid}/agent", json={}).json()
-    assert ok["extracted"]["amount_minor"] == 150000
-    assert ok["result"]["decision"] == "ALLOW"
-    assert ok["result"]["intent_state"] == "COMPLETED"  # lost 504 response, found by reconciliation
-
-    again = gateway.post(f"/api/intents/{iid}/proposals", json={
-        "operation": "REFUND", "customer_id": "C-17", "order_id": "ORD-204", "amount": "1500.00"}).json()
-    assert again["decision"] == "DUPLICATE"
-    assert len(provider.get("/v1/ledger").json()) == 1
-
-    timeline = gateway.get(f"/api/intents/{iid}").json()
-    assert {"proposals", "attempts", "effects", "reviews", "audit"} <= set(timeline)
-    assert gateway.get("/api/audit/verify").json()["ok"] is True
-    metrics = gateway.get("/api/metrics").json()
-    assert metrics["intents_by_state"] == {"COMPLETED": 1}
-
-
-def test_review_flow_over_http(services):
-    gateway, provider = services
-    iid = _setup(gateway)
-    provider.post("/v1/faults", json={"kind": "CORRUPT_AMOUNT", "order_id": "ORD-204", "params": {"factor": 2}})
-    gateway.post(f"/api/intents/{iid}/proposals", json={
-        "operation": "REFUND", "customer_id": "C-17", "order_id": "ORD-204", "amount": "1500.00"})
-    cases = gateway.get("/api/reviews").json()
+def test_review_flow_over_http(api):
+    asha, meera = api.login("op-asha"), api.login("rev-meera")
+    iid = api.authorize(asha)
+    api.fault("CORRUPT_AMOUNT", factor=2)  # settles immediately (delay 0): cannot be cancelled
+    r = api.propose(asha, iid).json()
+    assert r["state"] == "ESCALATED"
+    cases = api.client.get("/api/review-cases", headers=meera).json()["items"]
     assert len(cases) == 1 and cases[0]["reason"] == "IRREVERSIBLE_DISCREPANCY"
-    r = gateway.post(f"/api/reviews/{cases[0]['id']}/resolve",
-                     json={"reviewer_id": "lead", "resolution": "REFUND_RECOVERED_OUT_OF_BAND", "notes": "clawed back"})
-    assert r.status_code == 200
-    # After remediation the authorized refund is still owed; the gateway retries it under a fresh key.
-    assert gateway.get(f"/api/intents/{iid}").json()["intent"]["state"] == "COMPLETED"
-    amounts = sorted(t["amount_minor"] for t in provider.get("/v1/ledger").json())
+    assert cases[0]["discrepancy_amount"] == "1500.00" and cases[0]["case_id"].startswith("RC-")
+
+    forbidden = api.client.post(f"/api/review-cases/{cases[0]['case_id']}/resolve", headers=asha,
+                                json={"resolution": "REFUND_RECOVERED_OUT_OF_BAND"})
+    assert forbidden.status_code == 403  # operators cannot resolve review cases
+
+    done = api.client.post(f"/api/review-cases/{cases[0]['case_id']}/resolve", headers=meera,
+                           json={"resolution": "REFUND_RECOVERED_OUT_OF_BAND", "note": "clawed back"})
+    assert done.status_code == 200 and done.json()["intent_state"] == "COMPLETED"
+    amounts = sorted(t["amount_minor"] for t in api.provider.get("/v1/ledger").json())
     assert amounts == [150000, 300000]  # the remediated wrong refund stays in the provider's history
 
 
-def test_unknown_intent_is_404_and_bad_authorization_is_422(services):
-    gateway, _ = services
-    assert gateway.get("/api/intents/nope").status_code == 404
-    gateway.post("/api/operators", json={"id": "op-2", "name": "R", "permitted_operations": ["REFUND"], "limit": "100"})
-    gateway.post("/api/orders", json={"id": "ORD-1", "customer_id": "C-1", "amount": "5000"})
-    r = gateway.post("/api/intents", json={"operator_id": "op-2", "customer_id": "C-1", "order_id": "ORD-1",
-                                           "amount": "500"})
-    assert r.status_code == 422  # above the operator's limit
-
-
-_ = httpx  # the HttpProvider under test is httpx-based
+def test_unknown_intent_is_404_and_bad_authorization_is_422(api):
+    ravi = api.login("op-ravi")
+    r = api.client.get("/api/intents/INT-9999", headers=ravi)
+    assert r.status_code == 404 and r.json()["error"]["code"] == "NOT_FOUND"
+    r = api.client.post("/api/authorizations", headers=ravi, json={
+        "customer_id": "C-17", "order_id": "ORD-240", "authorized_amount": "6000.00"})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "OPERATOR_LIMIT_EXCEEDED"
+    assert r.json()["error"]["request_id"].startswith("req_")

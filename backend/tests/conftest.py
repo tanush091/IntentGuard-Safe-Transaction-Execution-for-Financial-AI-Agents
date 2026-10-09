@@ -12,6 +12,7 @@ from intentguard.db import init_schema, make_engine, make_session_factory
 from intentguard.engine import Hooks
 from intentguard.providers.inprocess import InProcessProvider
 from paysim import Fault, FaultKind, Order, PaymentSimulator, TxStatus
+from tests.api_support import api, api_inprocess  # noqa: F401 - HTTP fixtures
 
 _ids = itertools.count()
 

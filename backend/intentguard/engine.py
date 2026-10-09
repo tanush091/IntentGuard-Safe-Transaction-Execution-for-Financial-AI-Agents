@@ -685,13 +685,23 @@ class IntentGuard:
 
     def reconcile(self, intent_id: str) -> IntentState:
         """Find out what actually happened at the provider for this intent."""
+        return self._reconcile(intent_id)[0]
+
+    def reconcile_with_details(self, intent_id: str) -> tuple[IntentState, dict[str, Any]]:
+        """reconcile(), plus what this pass looked at and concluded (for the API and the investigator)."""
+        return self._reconcile(intent_id)
+
+    def _reconcile(self, intent_id: str) -> tuple[IntentState, dict[str, Any]]:
+        info: dict[str, Any] = {"ran": False, "lookup_ok": True, "searched": False, "found": [],
+                                "absence_confirmed": [], "lease_expired": []}
         with self._sf() as s:
             intent = s.get(Intent, intent_id)
             if intent is None:
                 raise NotFound(f"intent {intent_id} not found")
             state = IntentState(intent.state)
             if state not in RECONCILABLE_STATES:
-                return state
+                return state, info
+            info["ran"] = True
             op = Operation(intent.operation)
             attempts = list(s.scalars(select(Attempt).where(Attempt.intent_id == intent_id)))
             effects = list(s.scalars(select(Effect).where(Effect.intent_id == intent_id)))
@@ -719,6 +729,7 @@ class IntentGuard:
         except ProviderError as exc:
             lookup_ok = False
             lookup_error = f"{type(exc).__name__}: {exc}"
+        info.update(lookup_ok=lookup_ok, searched=need_search, found=sorted(found))
 
         with self._locked(intent_id) as (s, intent):
             for rec in found.values():
@@ -727,12 +738,14 @@ class IntentGuard:
             for a in s.scalars(select(Attempt).where(Attempt.intent_id == intent_id)):
                 if a.status == AttemptStatus.SUBMITTING.value and a.lease_expires_at <= t0:
                     a.status, a.error = AttemptStatus.UNKNOWN.value, "submission lease expired"
+                    info["lease_expired"].append(a.id)
                     intent.unknown_since = intent.unknown_since or now
                     self._audit(s, intent.id, "attempt.lease_expired", attempt_id=a.id)
                 if (a.status == AttemptStatus.UNKNOWN.value and lookup_ok and need_search
                         and t0 - a.created_at >= self.cfg.absence_window_s):
                     a.status, a.error, a.updated_at = AttemptStatus.RECONCILED.value, "verified absent at provider", now
                     a.completed_at = a.completed_at or now
+                    info["absence_confirmed"].append(a.id)
                     self._audit(s, intent.id, "attempt.absence_confirmed", attempt_id=a.id,
                                 waited_s=round(t0 - a.created_at, 3))
             if not lookup_ok:
@@ -743,7 +756,7 @@ class IntentGuard:
                 self._open_review(s, intent, ReviewReason.UNRESOLVABLE_OUTCOME,
                                   waited_s=round(now - intent.unknown_since, 3))
                 new = self._refresh(s, intent)
-            return new
+            return new, info
 
     def recover(self, intent_id: str) -> IntentState:
         """
@@ -909,6 +922,84 @@ class IntentGuard:
             self.reconcile(iid)
             self._drive(iid)
         return len(intent_ids)
+
+    def tick_detailed(self, limit: int = 200) -> list[tuple[str, IntentState, IntentState]]:
+        """tick(), reporting (intent_id, state before, state after) for every intent it processed."""
+        now = self._now()
+        with self._sf() as s:
+            due = list(s.execute(
+                select(Intent.id, Intent.state).where(Intent.next_check_at.is_not(None), Intent.next_check_at <= now)
+                .order_by(Intent.next_check_at).limit(limit)
+            ))
+        out: list[tuple[str, IntentState, IntentState]] = []
+        for iid, before in due:
+            if self._state(iid) in RECONCILABLE_STATES:
+                self.reconcile(iid)
+            self._drive(iid)
+            with self._locked(iid) as (s, intent):
+                if intent.next_check_at is not None and intent.next_check_at <= self._now():
+                    intent.next_check_at = self._now() + self.cfg.poll_interval_s
+                out.append((iid, IntentState(before), IntentState(intent.state)))
+        return out
+
+    # ============================================================ API hooks
+
+    def record_audit(self, kind: str, actor: str, intent_id: str | None = None, **payload: Any) -> None:
+        """Append an event for an action taken outside the protocol (user management, policies, ...)."""
+        with self._uow() as s:
+            self._audit(s, intent_id, kind, actor=actor, **payload)
+
+    def observe(self, intent_id: str, operation: Operation | str, provider_ref: str) -> tuple[IntentState, str]:
+        """
+        A provider event says something changed. Events are hints: re-fetch the transaction from the
+        provider and absorb what it says. Returns (intent state, outcome).
+        """
+        op = Operation(operation)
+        try:
+            rec = self.provider.get(op, provider_ref)
+        except ProviderError as exc:
+            return self._state(intent_id), f"provider_unreachable: {type(exc).__name__}"
+        with self._locked(intent_id) as (s, intent):
+            state = IntentState(intent.state)
+            if state in (IntentState.CANCELLED, IntentState.CLOSED):
+                live = rec.status in LIVE_PROVIDER_STATUSES
+                return state, "terminal_intent_live_effect" if live else "terminal_intent"
+            self._absorb(s, intent, rec)
+            self._refresh(s, intent)
+        return self._drive(intent_id), "absorbed"
+
+    def escalate(self, intent_id: str, actor: str, reason: ReviewReason = ReviewReason.INVESTIGATOR_ESCALATION,
+                 **details: Any) -> IntentState:
+        """Open a review case for an intent (e.g. on the investigator's recommendation)."""
+        with self._locked(intent_id) as (s, intent):
+            if IntentState(intent.state) in (IntentState.CANCELLED, IntentState.CLOSED):
+                raise ConflictError(f"intent is {intent.state}", "STATE_CONFLICT")
+            self._open_review(s, intent, reason, 0, requested_by=actor, **details)
+            return self._refresh(s, intent)
+
+    def schedule_recheck(self, intent_id: str, actor: str) -> IntentState:
+        """Ask the worker to look at an intent on its next pass."""
+        with self._locked(intent_id) as (s, intent):
+            intent.next_check_at = self._now()
+            self._audit(s, intent.id, "intent.recheck_scheduled", actor=actor)
+            return IntentState(intent.state)
+
+    def controlled_retry_allowed(self, intent_id: str) -> bool:
+        """True when the evidence allows the gateway to retry now: absence verified (or the last effect
+        verifiably reversed) and the attempt budget not used up."""
+        with self._sf() as s:
+            intent = s.get(Intent, intent_id)
+            if intent is None:
+                raise NotFound(f"intent {intent_id} not found")
+            if IntentState(intent.state) != IntentState.RECONCILING:
+                return False
+            attempts = list(s.scalars(select(Attempt).where(Attempt.intent_id == intent_id)
+                                      .order_by(Attempt.attempt_no)))
+            return self._auto_retry_allowed(s, intent, attempts) and intent.attempt_count < self.cfg.max_attempts
+
+    def retry_now(self, intent_id: str) -> IntentState:
+        """Run the controlled retry immediately (same rules as the worker's automatic retry)."""
+        return self._maybe_retry(intent_id)
 
     # ================================================================= review
 

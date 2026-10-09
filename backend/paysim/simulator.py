@@ -60,6 +60,9 @@ class FaultKind(StrEnum):
     # Faults on other operations.
     FAILED_CANCELLATION = "FAILED_CANCELLATION"  # cancel refused even when allowed
     LOOKUP_OUTAGE = "LOOKUP_OUTAGE"  # get/list fail with 503
+    # Webhook delivery faults (consumed by paysim.webhooks.WebhookEmitter).
+    WEBHOOK_DUPLICATE = "WEBHOOK_DUPLICATE"  # deliver the next event twice
+    WEBHOOK_DELAY = "WEBHOOK_DELAY"  # params: delay_s (later events can overtake it)
 
 
 CREATE_FAULTS = frozenset(
@@ -397,6 +400,14 @@ class PaymentSimulator:
         if tx.status == TxStatus.PENDING and self._now() >= tx.settles_at:
             tx.status = TxStatus.COMPLETED
         return tx
+
+    def take_fault(self, kind: FaultKind, order_id: str | None) -> Fault | None:
+        """Consume a queued fault of this kind for the order (used by the webhook emitter)."""
+        with self._lock:
+            f = self._take_fault(kind, order_id)
+            if f is not None:
+                self._save()
+            return f
 
     def _take_fault(self, kind: FaultKind, order_id: str | None) -> Fault | None:
         for i, f in enumerate(self._faults):

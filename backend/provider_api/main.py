@@ -4,15 +4,23 @@ Mock payment provider HTTP service backed by paysim.
 A lost response is reported as HTTP 504, which the gateway treats exactly like a
 client-side timeout: it cannot tell whether the operation executed. State is
 persisted to PAYSIM_STATE_PATH so the provider survives restarts.
+
+Fault injection (/v1/faults) exists only when SIMULATOR_MODE=true. When
+PAYSIM_WEBHOOK_URL and a secret (PAYSIM_WEBHOOK_SECRET or WEBHOOK_SECRET) are set,
+signed status-change events are delivered to the gateway.
 """
 
 from __future__ import annotations
 
 import os
+import threading
+from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
+
+from intentguard.envfile import load_env
 
 from paysim import (
     Fault,
@@ -28,16 +36,41 @@ from paysim import (
     TxKind,
 )
 
+from paysim.webhooks import WebhookEmitter
+
+load_env()
+
 sim = PaymentSimulator(
     default_settle_delay_s=float(os.getenv("PAYSIM_SETTLE_DELAY_S", "3")),
     state_path=os.getenv("PAYSIM_STATE_PATH", "paysim_state.json"),
 )
+SIMULATOR_MODE = os.getenv("SIMULATOR_MODE", "false").strip().lower() in ("1", "true", "yes")
+WEBHOOK_URL = os.getenv("PAYSIM_WEBHOOK_URL", "").strip()
+WEBHOOK_SECRET = (os.getenv("PAYSIM_WEBHOOK_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
+    emitter = None
+    if WEBHOOK_URL and WEBHOOK_SECRET:
+        emitter = WebhookEmitter(sim, WEBHOOK_URL, WEBHOOK_SECRET)
+        threading.Thread(target=emitter.run, name="paysim-webhooks", daemon=True).start()
+    yield
+    if emitter is not None:
+        emitter.stop()
+
 
 app = FastAPI(
     title="Mock Payment Provider (paysim)",
-    version="2.0.0",
+    version="3.0.0",
     description="Simulated provider. Never connects to real accounts or real money.",
+    lifespan=lifespan,
 )
+
+
+def simulator_only() -> None:
+    if not SIMULATOR_MODE:
+        raise HTTPException(404, {"code": "not_found", "message": "fault injection is disabled (SIMULATOR_MODE=false)"})
 
 
 class OrderIn(BaseModel):
@@ -115,7 +148,8 @@ def _cancel(tx_id: str, kind: TxKind) -> dict[str, Any]:
 
 @app.get("/health", tags=["system"])
 def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "mock-payment-provider", "simulation": True, **sim.stats}
+    return {"status": "ok", "service": "mock-payment-provider", "simulation": True,
+            "simulator_mode": SIMULATOR_MODE, "webhooks": bool(WEBHOOK_URL and WEBHOOK_SECRET), **sim.stats}
 
 
 @app.post("/v1/orders", tags=["setup"], status_code=201)
@@ -164,18 +198,18 @@ def void_authorization(tx_id: str) -> dict[str, Any]:
     return _cancel(tx_id, TxKind.AUTHORIZATION)
 
 
-@app.get("/v1/faults", tags=["faults"])
+@app.get("/v1/faults", tags=["faults"], dependencies=[Depends(simulator_only)])
 def list_faults() -> list[dict[str, Any]]:
     return [{"kind": f.kind.value, "order_id": f.order_id, "times": f.times, "params": f.params} for f in sim.faults()]
 
 
-@app.post("/v1/faults", tags=["faults"], status_code=201)
+@app.post("/v1/faults", tags=["faults"], status_code=201, dependencies=[Depends(simulator_only)])
 def inject_fault(body: FaultIn) -> dict[str, str]:
     sim.inject(Fault(body.kind, body.order_id, body.times, body.params))
     return {"kind": body.kind.value}
 
 
-@app.delete("/v1/faults", tags=["faults"])
+@app.delete("/v1/faults", tags=["faults"], dependencies=[Depends(simulator_only)])
 def clear_faults() -> dict[str, str]:
     sim.clear_faults()
     return {"status": "cleared"}

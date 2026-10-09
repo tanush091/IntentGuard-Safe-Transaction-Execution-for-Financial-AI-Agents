@@ -22,6 +22,10 @@ services:
     environment:
       PAYSIM_STATE_PATH: /data/paysim_state.json
       PAYSIM_SETTLE_DELAY_S: "3"
+      SIMULATOR_MODE: "true"
+      # Signed status-change events to the gateway; the secret comes from .env (scripts/init_env.py).
+      PAYSIM_WEBHOOK_URL: http://gateway:8000/api/webhooks/paysim
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
     volumes:
       - paysim:/data
     ports:
@@ -36,6 +40,9 @@ services:
       PAYMENT_SERVICE_URL: http://provider:8001
       CORS_ORIGINS: http://localhost:3000
       RESULTS_DIR: /app/experiments/results
+      SIMULATOR_MODE: "true"
+      JWT_SECRET: ${JWT_SECRET:-}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
     volumes:
       # Benchmark results shown on the dashboard's Experiments page (read-only).
       - ./experiments/results:/app/experiments/results:ro

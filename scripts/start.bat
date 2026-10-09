@@ -39,11 +39,14 @@ if exist ".venv\Scripts\activate.bat" (
     echo [INFO] Using virtual environment venv
 )
 
-python -c "import fastapi, uvicorn, sqlalchemy, httpx, numpy, pydantic_settings" >nul 2>&1
+python -c "import fastapi, uvicorn, sqlalchemy, httpx, numpy, pydantic_settings, jwt, argon2" >nul 2>&1
 if errorlevel 1 (
     echo [INFO] Installing Python dependencies...
     python -m pip install -r backend\requirements.txt || goto :fail
 )
+
+:: Fill in JWT_SECRET and WEBHOOK_SECRET in .env (generated locally, never committed).
+python scripts\init_env.py || goto :fail
 
 if not exist "frontend\node_modules" (
     echo [INFO] Installing dashboard dependencies...

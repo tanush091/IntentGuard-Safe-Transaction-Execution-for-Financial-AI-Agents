@@ -10,5 +10,6 @@ COPY intentguard/ ./intentguard/
 COPY paysim/ ./paysim/
 COPY gateway_api/ ./gateway_api/
 COPY provider_api/ ./provider_api/
+COPY investigator/ ./investigator/
 EXPOSE 8000 8001
 CMD ["uvicorn", "gateway_api.main:app", "--host", "0.0.0.0", "--port", "8000"]

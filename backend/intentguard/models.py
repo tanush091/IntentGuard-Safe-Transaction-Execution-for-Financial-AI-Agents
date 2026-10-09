@@ -302,7 +302,7 @@ class Mismatch(Base):
     __tablename__ = "mismatches"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("reconciliation_runs.id"), index=True)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("reconciliation_runs.id"), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(16))  # MISSING | DUPLICATE | AMOUNT | ORDER | CUSTOMER
     status: Mapped[str] = mapped_column(String(16), default="OPEN", index=True)
     fingerprint: Mapped[str] = mapped_column(String(128))
