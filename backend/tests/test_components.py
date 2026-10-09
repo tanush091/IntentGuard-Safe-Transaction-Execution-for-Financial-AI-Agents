@@ -90,7 +90,7 @@ def test_balance_and_ownership_are_enforced_by_the_provider(sim):
 
 
 def test_lost_response_executes_and_delayed_visibility_hides_it_from_search(sim):
-    sim.inject(Fault(FaultKind.LOST_RESPONSE, "ORD-1"))
+    sim.inject(Fault(FaultKind.TIMEOUT_AFTER_EXECUTION, "ORD-1"))
     sim.inject(Fault(FaultKind.DELAYED_VISIBILITY, "ORD-1", params={"lag_s": 30}))
     with pytest.raises(SimTimeout):
         sim.create(TxKind.REFUND, order_id="ORD-1", customer_id="C-1", amount_minor=100_00, currency="INR")
@@ -161,4 +161,4 @@ def test_state_machine_rejects_illegal_transitions():
     with pytest.raises(IllegalTransition):
         check_transition(IntentState.COMPLETED, IntentState.IN_FLIGHT)
     with pytest.raises(IllegalTransition):
-        check_transition(IntentState.REVOKED, IntentState.AUTHORIZED)
+        check_transition(IntentState.CANCELLED, IntentState.AUTHORIZED)

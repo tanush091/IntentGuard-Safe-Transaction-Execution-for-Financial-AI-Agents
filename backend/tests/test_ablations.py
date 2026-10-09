@@ -39,7 +39,7 @@ def test_effect_dedup_off_approves_second_proposal_but_stable_key_masks_it(tmp_p
     iid = w.intent()
     w.guard.submit(w.proposal(iid))
     second = w.guard.submit(w.proposal(iid))
-    assert second.decision == Decision.APPROVED  # the gate is gone...
+    assert second.decision == Decision.ALLOW  # the gate is gone...
     assert len(w.live()) == 1  # ...but the provider replays the same idempotency key
 
     w2 = make_world(tmp_path / "b", FULL.without(effect_dedup=False, stable_idempotency_key=False))
@@ -52,7 +52,7 @@ def test_effect_dedup_off_approves_second_proposal_but_stable_key_masks_it(tmp_p
 def test_reconciliation_off_assumes_failure_after_lost_response(tmp_path):
     w = make_world(tmp_path / "a", FULL.without(reconciliation=False))
     iid = w.intent()
-    w.fault(FaultKind.LOST_RESPONSE)
+    w.fault(FaultKind.TIMEOUT_AFTER_EXECUTION)
     w.guard.submit(w.proposal(iid))
     # The gateway wrongly concluded "no effect" and retried; the stable key made the provider
     # replay the original refund, and the ledger recorded that its assumption was violated.
@@ -62,7 +62,7 @@ def test_reconciliation_off_assumes_failure_after_lost_response(tmp_path):
 
     w2 = make_world(tmp_path / "b", FULL.without(reconciliation=False, stable_idempotency_key=False))
     iid2 = w2.intent()
-    w2.fault(FaultKind.LOST_RESPONSE)
+    w2.fault(FaultKind.TIMEOUT_AFTER_EXECUTION)
     w2.guard.submit(w2.proposal(iid2))
     w2.settle()
     assert len(w2.live()) == 2
@@ -72,7 +72,7 @@ def test_reconciliation_off_assumes_failure_after_lost_response(tmp_path):
 def test_absence_window_prevents_premature_retry_under_delayed_visibility(tmp_path, window, expected_live):
     w = make_world(tmp_path, FULL.without(absence_window_s=window, stable_idempotency_key=False))
     iid = w.intent()
-    w.fault(FaultKind.LOST_RESPONSE)
+    w.fault(FaultKind.TIMEOUT_AFTER_EXECUTION)
     w.fault(FaultKind.DELAYED_VISIBILITY, lag_s=20)
     w.guard.submit(w.proposal(iid))
     w.settle()
@@ -86,7 +86,7 @@ def test_absence_window_prevents_premature_retry_under_delayed_visibility(tmp_pa
 def test_state_aware_recovery_off_claims_reversal_that_never_happened(tmp_path):
     w = make_world(tmp_path, FULL.without(state_aware_recovery=False))
     iid = w.intent()
-    w.fault(FaultKind.AMOUNT_MISMATCH, factor=2.0)  # completes immediately: not cancellable
+    w.fault(FaultKind.CORRUPT_AMOUNT, factor=2.0)  # completes immediately: not cancellable
     w.guard.submit(w.proposal(iid))
     w.settle()
     assert w.guard._state(iid) == IntentState.COMPLETED  # the system believes all is well
@@ -142,5 +142,5 @@ def test_serialization_off_lets_concurrent_agents_both_pass_the_gate(tmp_path, m
             raise errors[0]
         results[serialize] = (decisions, len(w.live()))
 
-    assert results[True][0].count(Decision.APPROVED) == 1 and results[True][1] == 1
-    assert results[False][0].count(Decision.APPROVED) == 2 and results[False][1] == 2
+    assert results[True][0].count(Decision.ALLOW) == 1 and results[True][1] == 1
+    assert results[False][0].count(Decision.ALLOW) == 2 and results[False][1] == 2

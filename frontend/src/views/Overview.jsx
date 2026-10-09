@@ -58,7 +58,7 @@ export default function Overview({ goto }) {
               label="Proposals"
               icon={<Send size={16} />}
               value={sumValues(m.proposals_by_decision)}
-              sub={`${m.proposals_by_decision?.APPROVED ?? 0} approved · ${m.proposals_by_decision?.REJECTED ?? 0} rejected`}
+              sub={`${m.proposals_by_decision?.ALLOW ?? 0} allowed · ${m.proposals_by_decision?.REJECT ?? 0} rejected`}
             />
             <Tile
               label="Provider attempts"

@@ -54,15 +54,15 @@ def _setup(gateway):
 def test_end_to_end_lost_response_over_http(services):
     gateway, provider = services
     iid = _setup(gateway)
-    provider.post("/v1/faults", json={"kind": "LOST_RESPONSE", "order_id": "ORD-204"})
+    provider.post("/v1/faults", json={"kind": "TIMEOUT_AFTER_EXECUTION", "order_id": "ORD-204"})
 
     bad = gateway.post(f"/api/intents/{iid}/proposals", json={
         "operation": "REFUND", "customer_id": "C-17", "order_id": "ORD-204", "amount": "15000.00"}).json()
-    assert bad["decision"] == "REJECTED"
+    assert bad["decision"] == "REJECT"
 
     ok = gateway.post(f"/api/intents/{iid}/agent", json={}).json()
     assert ok["extracted"]["amount_minor"] == 150000
-    assert ok["result"]["decision"] == "APPROVED"
+    assert ok["result"]["decision"] == "ALLOW"
     assert ok["result"]["intent_state"] == "COMPLETED"  # lost 504 response, found by reconciliation
 
     again = gateway.post(f"/api/intents/{iid}/proposals", json={
@@ -80,13 +80,13 @@ def test_end_to_end_lost_response_over_http(services):
 def test_review_flow_over_http(services):
     gateway, provider = services
     iid = _setup(gateway)
-    provider.post("/v1/faults", json={"kind": "AMOUNT_MISMATCH", "order_id": "ORD-204", "params": {"factor": 2}})
+    provider.post("/v1/faults", json={"kind": "CORRUPT_AMOUNT", "order_id": "ORD-204", "params": {"factor": 2}})
     gateway.post(f"/api/intents/{iid}/proposals", json={
         "operation": "REFUND", "customer_id": "C-17", "order_id": "ORD-204", "amount": "1500.00"})
     cases = gateway.get("/api/reviews").json()
     assert len(cases) == 1 and cases[0]["reason"] == "IRREVERSIBLE_DISCREPANCY"
     r = gateway.post(f"/api/reviews/{cases[0]['id']}/resolve",
-                     json={"reviewer_id": "lead", "resolution": "MANUALLY_REMEDIATED", "notes": "clawed back"})
+                     json={"reviewer_id": "lead", "resolution": "REFUND_RECOVERED_OUT_OF_BAND", "notes": "clawed back"})
     assert r.status_code == 200
     # After remediation the authorized refund is still owed; the gateway retries it under a fresh key.
     assert gateway.get(f"/api/intents/{iid}").json()["intent"]["state"] == "COMPLETED"

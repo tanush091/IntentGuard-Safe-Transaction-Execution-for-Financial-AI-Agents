@@ -254,18 +254,20 @@ class IntentGuardArm(Arm):
     def _submit(self, it: IntentSpec, p: Proposal) -> Resp:
         iid = self.intent_ids[it.key]
         r = self.guard.submit(Proposal(**{**p.__dict__, "intent_id": iid}))
-        if r.decision == Decision.REJECTED:
+        if r.decision == Decision.REJECT:
             return Resp.REJECTED
         if r.decision == Decision.DUPLICATE:
-            return Resp.DUPLICATE
-        if r.decision in (Decision.IN_PROGRESS, Decision.HELD):
+            # Another attempt is in progress: the gateway owns the intent; the agent stops either way.
+            in_progress = any(f["check"] == "ATTEMPT_IN_PROGRESS" for f in r.findings)
+            return Resp.ACCEPTED if in_progress else Resp.DUPLICATE
+        if r.decision == Decision.HOLD_FOR_REVIEW:
             return Resp.ACCEPTED
-        if r.intent_state in (IntentState.COMPLETED, IntentState.PENDING_SETTLEMENT):
+        if r.intent_state in (IntentState.COMPLETED, IntentState.EXECUTING):
             return Resp.DONE
-        if r.intent_state == IntentState.RETRYABLE:
+        if r.intent_state == IntentState.RECONCILING:
             with self.sf() as s:  # provider rejected definitively -> agent may re-propose
                 st = s.scalar(select(Attempt.status).where(Attempt.id == r.attempt_id))
-            return Resp.REJECTED if st == "REJECTED" else Resp.ACCEPTED
+            return Resp.REJECTED if st == "FAILED" else Resp.ACCEPTED
         return Resp.ACCEPTED
 
     def restart(self) -> None:
@@ -281,11 +283,11 @@ class IntentGuardArm(Arm):
     def reported(self, it: IntentSpec) -> Reported:
         iid = self.intent_ids[it.key]
         st = self.guard._state(iid)
-        if st in (IntentState.COMPLETED, IntentState.PENDING_SETTLEMENT):
+        if st in (IntentState.COMPLETED, IntentState.EXECUTING):
             return Reported.COMPLETED
-        if st in (IntentState.NEEDS_REVIEW, IntentState.DISCREPANCY):
+        if st in (IntentState.ESCALATED, IntentState.DISCREPANCY):
             return Reported.REVIEW
-        if st in (IntentState.OUTCOME_UNKNOWN, IntentState.IN_FLIGHT):
+        if st in (IntentState.UNKNOWN, IntentState.IN_FLIGHT):
             return Reported.IN_PROGRESS
         with self.sf() as s:
             attempts = s.scalar(select(func.count()).select_from(Attempt).where(Attempt.intent_id == iid)) or 0

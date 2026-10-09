@@ -53,7 +53,7 @@ from intentguard.providers.base import (
 
 LIVE = [s.value for s in LIVE_PROVIDER_STATUSES]
 ACTIVE_STATES = frozenset(
-    {IntentState.IN_FLIGHT, IntentState.OUTCOME_UNKNOWN, IntentState.PENDING_SETTLEMENT, IntentState.DISCREPANCY}
+    {IntentState.IN_FLIGHT, IntentState.UNKNOWN, IntentState.EXECUTING, IntentState.DISCREPANCY}
 )
 RECONCILABLE_STATES = ACTIVE_STATES | {IntentState.COMPLETED}
 
@@ -225,9 +225,9 @@ class IntentGuard:
 
     def revoke(self, intent_id: str, actor: str) -> None:
         with self._locked(intent_id) as (s, intent):
-            if IntentState(intent.state) not in (IntentState.AUTHORIZED, IntentState.RETRYABLE):
+            if IntentState(intent.state) not in (IntentState.AUTHORIZED, IntentState.RECONCILING):
                 raise ConflictError(f"cannot revoke an intent in state {intent.state}")
-            self._set_state(s, intent, IntentState.REVOKED)
+            self._set_state(s, intent, IntentState.CANCELLED)
             intent.next_check_at = None
             self._audit(s, intent.id, "intent.revoked", actor=actor)
 
@@ -237,13 +237,13 @@ class IntentGuard:
         if self.cfg.serialize_intent:
             with self._locked(p.intent_id) as (s, intent):
                 result = self._decide(s, intent, p)
-                if result.decision == Decision.APPROVED:
+                if result.decision == Decision.ALLOW:
                     result.attempt_id = self._reserve(s, intent, p, result.proposal_id).id
         else:
             # Ablation: decision and reservation in separate transactions.
             with self._locked(p.intent_id) as (s, intent):
                 result = self._decide(s, intent, p)
-            if result.decision == Decision.APPROVED:
+            if result.decision == Decision.ALLOW:
                 time.sleep(0)
                 try:
                     with self._locked(p.intent_id) as (s, intent):
@@ -252,8 +252,8 @@ class IntentGuard:
                     # The state machine still refuses e.g. COMPLETED -> IN_FLIGHT; only the
                     # window where both agents reserve while IN_FLIGHT stays open.
                     st = self._state(p.intent_id)
-                    done = st in (IntentState.COMPLETED, IntentState.PENDING_SETTLEMENT)
-                    result.decision = Decision.DUPLICATE if done else Decision.IN_PROGRESS
+                    done = st in (IntentState.COMPLETED, IntentState.EXECUTING)
+                    result.decision = Decision.DUPLICATE if done else Decision.DUPLICATE
                     result.intent_state = st
 
         if result.attempt_id is not None:
@@ -381,16 +381,16 @@ class IntentGuard:
             assert att is not None
             now = self._now()
             if rec is not None:
-                att.status, att.provider_ref = AttemptStatus.ACKNOWLEDGED.value, rec.provider_ref
+                att.status, att.provider_ref = AttemptStatus.SUCCEEDED.value, rec.provider_ref
                 self._absorb(s, intent, rec)
             elif AttemptStatus(att.status) in UNRESOLVED_ATTEMPTS:
                 if outcome == "rejected":
-                    att.status = AttemptStatus.REJECTED.value
+                    att.status = AttemptStatus.FAILED.value
                 elif self.cfg.reconciliation:
                     att.status = AttemptStatus.UNKNOWN.value
                     intent.unknown_since = intent.unknown_since or now
                 else:
-                    att.status = AttemptStatus.NO_EFFECT.value
+                    att.status = AttemptStatus.RECONCILED.value
                     error = f"{error} (assumed no effect: reconciliation disabled)"
             att.error, att.updated_at = error, now
             self._audit(s, intent.id, "attempt.result", attempt_id=attempt_id, outcome=outcome,
@@ -453,33 +453,33 @@ class IntentGuard:
         att_id = rec.metadata.get("attempt_id")
         for att in s.scalars(select(Attempt).where(Attempt.intent_id == intent.id)):
             same = att.id == att_id or (rec.idempotency_key is not None and att.idempotency_key == rec.idempotency_key)
-            if not same or att.status in (AttemptStatus.ACKNOWLEDGED.value, AttemptStatus.REJECTED.value):
+            if not same or att.status in (AttemptStatus.SUCCEEDED.value, AttemptStatus.FAILED.value):
                 continue
-            if att.status == AttemptStatus.NO_EFFECT.value:
+            if att.status == AttemptStatus.RECONCILED.value:
                 self._audit(s, intent.id, "attempt.absence_assumption_violated", attempt_id=att.id,
                             provider_ref=rec.provider_ref)
-            att.status, att.provider_ref, att.updated_at = AttemptStatus.ACKNOWLEDGED.value, rec.provider_ref, now
+            att.status, att.provider_ref, att.updated_at = AttemptStatus.SUCCEEDED.value, rec.provider_ref, now
         return eff
 
     def _derive(self, intent: Intent, effects: list[Effect], attempts: list[Attempt], open_review: bool) -> IntentState:
         current = IntentState(intent.state)
-        if current in (IntentState.REVOKED, IntentState.CLOSED):
+        if current in (IntentState.CANCELLED, IntentState.CLOSED):
             return current
         if open_review:
-            return IntentState.NEEDS_REVIEW
+            return IntentState.ESCALATED
         if any(e.provider_status in LIVE and e.classification != EffectClass.INTENDED.value and not e.remediated
                for e in effects):
             return IntentState.DISCREPANCY
         intended = [e for e in effects if e.counts_toward_intent]
         if intended:
             done = intended[0].provider_status == ProviderStatus.COMPLETED.value
-            return IntentState.COMPLETED if done else IntentState.PENDING_SETTLEMENT
+            return IntentState.COMPLETED if done else IntentState.EXECUTING
         statuses = {a.status for a in attempts}
         if AttemptStatus.UNKNOWN.value in statuses:
-            return IntentState.OUTCOME_UNKNOWN
+            return IntentState.UNKNOWN
         if AttemptStatus.SUBMITTING.value in statuses:
             return IntentState.IN_FLIGHT
-        return IntentState.RETRYABLE if attempts else IntentState.AUTHORIZED
+        return IntentState.RECONCILING if attempts else IntentState.AUTHORIZED
 
     def _refresh(self, s: Session, intent: Intent) -> IntentState:
         now = self._now()
@@ -512,7 +512,7 @@ class IntentGuard:
             intent.next_check_at = min(a.lease_expires_at for a in attempts if a.status == AttemptStatus.SUBMITTING.value)
         elif target in ACTIVE_STATES:
             intent.next_check_at = now + self._backoff(intent, now)
-        elif target == IntentState.RETRYABLE and self._auto_retry_allowed(s, intent, attempts):
+        elif target == IntentState.RECONCILING and self._auto_retry_allowed(s, intent, attempts):
             intent.next_check_at = now
         elif target == IntentState.COMPLETED and intent.watch_until and intent.watch_until > now:
             intent.next_check_at = min(now + self._backoff(intent, now), intent.watch_until)
@@ -557,11 +557,11 @@ class IntentGuard:
     def _drive(self, intent_id: str, max_steps: int = 10) -> IntentState:
         state = self._state(intent_id)
         for _ in range(max_steps):
-            if state in (IntentState.OUTCOME_UNKNOWN, IntentState.PENDING_SETTLEMENT):
+            if state in (IntentState.UNKNOWN, IntentState.EXECUTING):
                 new = self.reconcile(intent_id)
             elif state == IntentState.DISCREPANCY:
                 new = self.recover(intent_id)
-            elif state == IntentState.RETRYABLE:
+            elif state == IntentState.RECONCILING:
                 new = self._maybe_retry(intent_id)
             else:
                 break
@@ -618,13 +618,13 @@ class IntentGuard:
                     self._audit(s, intent.id, "attempt.lease_expired", attempt_id=a.id)
                 if (a.status == AttemptStatus.UNKNOWN.value and lookup_ok and need_search
                         and t0 - a.created_at >= self.cfg.absence_window_s):
-                    a.status, a.error, a.updated_at = AttemptStatus.NO_EFFECT.value, "verified absent at provider", now
+                    a.status, a.error, a.updated_at = AttemptStatus.RECONCILED.value, "verified absent at provider", now
                     self._audit(s, intent.id, "attempt.absence_confirmed", attempt_id=a.id,
                                 waited_s=round(t0 - a.created_at, 3))
             if not lookup_ok:
                 self._audit(s, intent.id, "reconcile.lookup_failed", error=lookup_error)
             new = self._refresh(s, intent)
-            if (new == IntentState.OUTCOME_UNKNOWN and intent.unknown_since is not None
+            if (new == IntentState.UNKNOWN and intent.unknown_since is not None
                     and now - intent.unknown_since >= self.cfg.unknown_review_after_s):
                 self._open_review(s, intent, ReviewReason.UNRESOLVABLE_OUTCOME,
                                   waited_s=round(now - intent.unknown_since, 3))
@@ -720,9 +720,9 @@ class IntentGuard:
         if not self.cfg.auto_retry or not attempts:
             return False
         last = attempts[-1]
-        if last.status == AttemptStatus.NO_EFFECT.value:
+        if last.status == AttemptStatus.RECONCILED.value:
             return True
-        if last.status != AttemptStatus.ACKNOWLEDGED.value:
+        if last.status != AttemptStatus.SUCCEEDED.value:
             return False
         # The last attempt's effect was reversed (verified, or assumed under the ablation).
         effs = list(s.scalars(select(Effect).where(Effect.attempt_id == last.id)))
@@ -730,12 +730,12 @@ class IntentGuard:
 
     def _maybe_retry(self, intent_id: str) -> IntentState:
         with self._locked(intent_id) as (s, intent):
-            if IntentState(intent.state) != IntentState.RETRYABLE:
+            if IntentState(intent.state) != IntentState.RECONCILING:
                 return IntentState(intent.state)
             attempts = list(s.scalars(select(Attempt).where(Attempt.intent_id == intent_id).order_by(Attempt.attempt_no)))
             if not self._auto_retry_allowed(s, intent, attempts):
                 intent.next_check_at = None
-                return IntentState.RETRYABLE
+                return IntentState.RECONCILING
             if intent.attempt_count >= self.cfg.max_attempts:
                 self._open_review(s, intent, ReviewReason.ATTEMPT_BUDGET_EXHAUSTED, attempts=intent.attempt_count)
                 return self._refresh(s, intent)
@@ -805,13 +805,13 @@ class IntentGuard:
             if rc.status != "OPEN":
                 raise ConflictError("review case is already resolved")
             effects = list(s.scalars(select(Effect).where(Effect.intent_id == intent_id)))
-            if resolution == ReviewResolution.CONFIRMED_COMPLETED and not any(e.counts_toward_intent for e in effects):
+            if resolution == ReviewResolution.ACCEPTED_AS_IS and not any(e.counts_toward_intent for e in effects):
                 raise ConflictError("no verified intended effect exists; completion cannot be confirmed")
             if resolution == ReviewResolution.CONFIRMED_NO_EFFECT:
                 for a in s.scalars(select(Attempt).where(Attempt.intent_id == intent_id)):
                     if a.status in (AttemptStatus.UNKNOWN.value, AttemptStatus.SUBMITTING.value):
-                        a.status, a.error = AttemptStatus.NO_EFFECT.value, f"confirmed absent by reviewer {reviewer_id}"
-            if resolution == ReviewResolution.MANUALLY_REMEDIATED:
+                        a.status, a.error = AttemptStatus.RECONCILED.value, f"confirmed absent by reviewer {reviewer_id}"
+            if resolution == ReviewResolution.REFUND_RECOVERED_OUT_OF_BAND:
                 for e in effects:
                     if e.provider_status in LIVE and e.classification != EffectClass.INTENDED.value:
                         e.remediated, e.note = True, f"remediated outside the system per {reviewer_id}"
@@ -820,7 +820,7 @@ class IntentGuard:
             rc.notes, rc.resolved_at = notes, self._now()
             self._audit(s, intent_id, "review.resolved", actor=reviewer_id, case_id=case_id,
                         resolution=resolution.value, notes=notes)
-            if resolution == ReviewResolution.CLOSED_UNFULFILLED:
+            if resolution == ReviewResolution.WRITTEN_OFF:
                 for other in s.scalars(select(ReviewCase).where(ReviewCase.intent_id == intent_id,
                                                                 ReviewCase.status == "OPEN")):
                     other.status, other.resolution, other.resolved_by = "RESOLVED", resolution.value, reviewer_id

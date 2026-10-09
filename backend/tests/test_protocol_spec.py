@@ -14,8 +14,8 @@ from sqlalchemy import select
 def test_amount_exceeding_authorization_is_blocked(world):
     iid = world.intent()
     r = world.guard.submit(world.proposal(iid, amount_minor=15000_00))
-    assert r.decision == Decision.REJECTED
-    assert any(f["check"] == "AMOUNT_MISMATCH" for f in r.findings)
+    assert r.decision == Decision.REJECT
+    assert any(f["check"] == "AMOUNT_EXCEEDS_AUTHORIZATION" for f in r.findings)
     assert world.sim.all_transactions() == []
 
 
@@ -23,7 +23,7 @@ def test_wrong_order_is_blocked(world):
     world.order("ORD-240")
     iid = world.intent()
     r = world.guard.submit(world.proposal(iid, order_id="ORD-240"))
-    assert r.decision == Decision.REJECTED
+    assert r.decision == Decision.REJECT
     assert any(f["check"] == "ORDER_MISMATCH" for f in r.findings)
     assert world.sim.all_transactions() == []
 
@@ -31,7 +31,7 @@ def test_wrong_order_is_blocked(world):
 def test_confirmed_refund_is_verified_and_completed(world):
     iid = world.intent()
     r = world.guard.submit(world.proposal(iid))
-    assert r.decision == Decision.APPROVED and r.intent_state == IntentState.COMPLETED
+    assert r.decision == Decision.ALLOW and r.intent_state == IntentState.COMPLETED
     with world.guard.session() as s:
         eff = s.scalar(select(Effect).where(Effect.intent_id == iid))
     assert eff.classification == "INTENDED" and eff.provider_status == "COMPLETED"
@@ -43,7 +43,7 @@ def test_timeout_marks_unknown_and_never_retries_blindly(world):
     world.fault(FaultKind.TIMEOUT_BEFORE_EXECUTION)
     r = world.guard.submit(world.proposal(iid))
     # Nothing is visible yet and the absence window has not elapsed: the outcome stays unknown.
-    assert r.intent_state == IntentState.OUTCOME_UNKNOWN
+    assert r.intent_state == IntentState.UNKNOWN
     assert world.sim.stats["create_calls"] == 1
     world.settle(60)  # after the absence window, reconciliation proves absence; one controlled retry
     assert world.guard._state(iid) == IntentState.COMPLETED
@@ -52,7 +52,7 @@ def test_timeout_marks_unknown_and_never_retries_blindly(world):
 
 def test_lost_response_is_found_by_reconciliation_without_a_second_refund(world):
     iid = world.intent()
-    world.fault(FaultKind.LOST_RESPONSE)
+    world.fault(FaultKind.TIMEOUT_AFTER_EXECUTION)
     r = world.guard.submit(world.proposal(iid))
     assert r.intent_state == IntentState.COMPLETED  # found by the inline reconciliation
     assert world.sim.stats["executions"] == 1
@@ -60,12 +60,12 @@ def test_lost_response_is_found_by_reconciliation_without_a_second_refund(world)
 
 def test_restart_with_new_request_id_cannot_cause_a_second_effect(world):
     iid = world.intent()
-    world.fault(FaultKind.LOST_RESPONSE)
+    world.fault(FaultKind.TIMEOUT_AFTER_EXECUTION)
     world.fault(FaultKind.DELAYED_VISIBILITY, lag_s=20)
     world.guard.submit(world.proposal(iid, request_id="before-crash"))
     world.restart()
     r = world.guard.submit(world.proposal(iid, request_id="after-restart"))
-    assert r.decision in (Decision.IN_PROGRESS, Decision.DUPLICATE)
+    assert r.decision in (Decision.DUPLICATE,)
     world.settle()
     assert len(world.live()) == 1
     assert world.guard._state(iid) == IntentState.COMPLETED
@@ -73,8 +73,8 @@ def test_restart_with_new_request_id_cannot_cause_a_second_effect(world):
 
 def test_incorrect_pending_refund_is_cancelled_and_verified(world):
     iid = world.intent()
-    world.fault(FaultKind.SLOW_SETTLEMENT, settle_delay_s=120)
-    world.fault(FaultKind.AMOUNT_MISMATCH, factor=10.0)
+    world.fault(FaultKind.DELAYED_STATUS, settle_delay_s=120)
+    world.fault(FaultKind.CORRUPT_AMOUNT, factor=10.0)
     world.guard.submit(world.proposal(iid))
     world.settle()
     txs = world.sim.all_transactions()
@@ -85,10 +85,10 @@ def test_incorrect_pending_refund_is_cancelled_and_verified(world):
 
 def test_incorrect_completed_refund_is_escalated_not_reported_reversed(world):
     iid = world.intent()
-    world.fault(FaultKind.AMOUNT_MISMATCH, factor=10.0)
+    world.fault(FaultKind.CORRUPT_AMOUNT, factor=10.0)
     world.guard.submit(world.proposal(iid))
     world.settle()
-    assert world.guard._state(iid) == IntentState.NEEDS_REVIEW
+    assert world.guard._state(iid) == IntentState.ESCALATED
     with world.guard.session() as s:
         case = s.scalar(select(ReviewCase).where(ReviewCase.intent_id == iid))
     assert case.reason == "IRREVERSIBLE_DISCREPANCY"
@@ -100,7 +100,7 @@ def test_incorrect_completed_refund_is_escalated_not_reported_reversed(world):
 def test_authorization_hold_with_wrong_amount_is_voided_even_when_authorized(world):
     world.order("ORD-500", amount=20000_00)
     iid = world.intent(amount=2000_00, order_id="ORD-500", operation=Operation.PAYMENT_AUTHORIZATION)
-    world.fault(FaultKind.AMOUNT_MISMATCH, order_id="ORD-500", factor=1.5)
+    world.fault(FaultKind.CORRUPT_AMOUNT, order_id="ORD-500", factor=1.5)
     world.guard.submit(world.proposal(iid, operation=Operation.PAYMENT_AUTHORIZATION, order_id="ORD-500",
                                       amount_minor=2000_00))
     world.settle()
@@ -113,17 +113,17 @@ def test_revoked_operator_blocks_execution(world):
     iid = world.intent()
     world.guard.set_operator_active("op-1", False)
     r = world.guard.submit(world.proposal(iid))
-    assert r.decision == Decision.REJECTED
+    assert r.decision == Decision.REJECT
     assert any(f["check"] == "OPERATOR_NOT_PERMITTED" for f in r.findings)
 
 
 def test_unresolvable_outcome_is_held_for_review(world):
     iid = world.intent()
-    world.fault(FaultKind.LOST_RESPONSE)
+    world.fault(FaultKind.TIMEOUT_AFTER_EXECUTION)
     world.fault(FaultKind.LOOKUP_OUTAGE, times=-1)  # the provider can never be queried
     world.guard.submit(world.proposal(iid))
     world.settle()
-    assert world.guard._state(iid) == IntentState.NEEDS_REVIEW
+    assert world.guard._state(iid) == IntentState.ESCALATED
     with world.guard.session() as s:
         statuses = {a.status for a in s.scalars(select(Attempt).where(Attempt.intent_id == iid))}
     assert statuses == {"UNKNOWN"}  # never declared success or failure

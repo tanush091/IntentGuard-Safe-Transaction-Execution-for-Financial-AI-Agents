@@ -6,10 +6,11 @@ import { money, relTime, short, ts } from '../util.js';
 
 // ReviewResolution enum (intentguard/domain.py)
 const RESOLUTIONS = [
-  ['CONFIRMED_COMPLETED', 'Reviewer verified the intended effect'],
+  ['ACCEPTED_AS_IS', 'The verified intended effect stands'],
   ['CONFIRMED_NO_EFFECT', 'Verified nothing executed; retry allowed'],
-  ['MANUALLY_REMEDIATED', 'Discrepancy fixed outside the system'],
-  ['CLOSED_UNFULFILLED', 'Give up on the intent'],
+  ['REFUND_RECOVERED_OUT_OF_BAND', 'Wrong effect handled outside the system'],
+  ['WRITTEN_OFF', 'Give up on the intent'],
+  ['OTHER', 'Close the case with a note'],
 ];
 
 function ResolveForm({ rc, onDone }) {

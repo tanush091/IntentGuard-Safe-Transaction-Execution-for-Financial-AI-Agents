@@ -309,7 +309,7 @@ def reconcile(intent_id: str, request: Request) -> dict[str, str]:
 @app.post("/api/intents/{intent_id}/revoke", tags=["intents"])
 def revoke(intent_id: str, body: RevokeIn, request: Request) -> dict[str, str]:
     guard_of(request).revoke(intent_id, body.actor)
-    return {"intent_state": "REVOKED"}
+    return {"intent_state": "CANCELLED"}
 
 
 # ------------------------------------------------------------------ reviews

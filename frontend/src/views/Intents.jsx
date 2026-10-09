@@ -7,8 +7,8 @@ import { amountOf, minorToMajorString, money, relTime, short, ts } from '../util
 
 // Enum values from intentguard/domain.py (labels only; counts come from the API).
 const KNOWN_STATES = [
-  'AUTHORIZED', 'IN_FLIGHT', 'PENDING_SETTLEMENT', 'OUTCOME_UNKNOWN', 'RETRYABLE',
-  'DISCREPANCY', 'NEEDS_REVIEW', 'COMPLETED', 'REVOKED', 'CLOSED',
+  'AUTHORIZED', 'IN_FLIGHT', 'EXECUTING', 'UNKNOWN', 'RECONCILING', 'DISCREPANCY',
+  'CANCEL_REQUESTED', 'ESCALATED', 'COMPLETED', 'CANCELLED', 'CLOSED',
 ];
 const OPERATIONS = ['REFUND', 'PAYMENT_AUTHORIZATION'];
 

@@ -256,31 +256,31 @@ def _build(sid: str, category: str, rng: random.Random, ids: _Ids) -> Scenario:
         case "fault_timeout_before_execution":
             return Scenario(**base, intents=(intent(),), faults=(FaultSpec("TIMEOUT_BEFORE_EXECUTION", primary),))
         case "fault_lost_response" | "auth_lost_response":
-            return Scenario(**base, intents=(intent(),), faults=(FaultSpec("LOST_RESPONSE", primary),))
+            return Scenario(**base, intents=(intent(),), faults=(FaultSpec("TIMEOUT_AFTER_EXECUTION", primary),))
         case "fault_outage_503":
             return Scenario(**base, intents=(intent(),),
                             faults=(FaultSpec("OUTAGE", primary, times=rng.randint(1, 2)),))
         case "fault_slow_settlement":
             return Scenario(**base, intents=(intent(),),
-                            faults=(FaultSpec("SLOW_SETTLEMENT", primary, params={"settle_delay_s": rng.choice([20, 60, 180])}),))
+                            faults=(FaultSpec("DELAYED_STATUS", primary, params={"settle_delay_s": rng.choice([20, 60, 180])}),))
         case "fault_lost_response_delayed_visibility":
             return Scenario(**base, intents=(intent(),), faults=(
-                FaultSpec("LOST_RESPONSE", primary), FaultSpec("DELAYED_VISIBILITY", primary, params={"lag_s": lag})))
+                FaultSpec("TIMEOUT_AFTER_EXECUTION", primary), FaultSpec("DELAYED_VISIBILITY", primary, params={"lag_s": lag})))
         case "fault_lookup_outage_after_lost_response":
             return Scenario(**base, intents=(intent(),), faults=(
-                FaultSpec("LOST_RESPONSE", primary), FaultSpec("LOOKUP_OUTAGE", primary, times=rng.randint(1, 8))))
+                FaultSpec("TIMEOUT_AFTER_EXECUTION", primary), FaultSpec("LOOKUP_OUTAGE", primary, times=rng.randint(1, 8))))
         case "fault_provider_amount_mismatch_pending":
             return Scenario(**base, intents=(intent(),), faults=(
-                FaultSpec("SLOW_SETTLEMENT", primary, params={"settle_delay_s": 120}),
-                FaultSpec("AMOUNT_MISMATCH", primary, params={"factor": rng.choice([0.5, 1.5, 10.0])})))
+                FaultSpec("DELAYED_STATUS", primary, params={"settle_delay_s": 120}),
+                FaultSpec("CORRUPT_AMOUNT", primary, params={"factor": rng.choice([0.5, 1.5, 10.0])})))
         case "fault_provider_amount_mismatch_completed" | "auth_amount_mismatch_completed":
             return Scenario(**base, intents=(intent(),), faults=(
-                FaultSpec("AMOUNT_MISMATCH", primary, params={"factor": rng.choice([0.5, 1.5, 10.0])}),))
+                FaultSpec("CORRUPT_AMOUNT", primary, params={"factor": rng.choice([0.5, 1.5, 10.0])}),))
         case "fault_cancel_rejected":
             return Scenario(**base, intents=(intent(),), faults=(
-                FaultSpec("SLOW_SETTLEMENT", primary, params={"settle_delay_s": 120}),
-                FaultSpec("AMOUNT_MISMATCH", primary, params={"factor": 1.5}),
-                FaultSpec("CANCEL_REJECTED", primary)))
+                FaultSpec("DELAYED_STATUS", primary, params={"settle_delay_s": 120}),
+                FaultSpec("CORRUPT_AMOUNT", primary, params={"factor": 1.5}),
+                FaultSpec("FAILED_CANCELLATION", primary)))
         case "crash_before_send":
             return Scenario(**base, intents=(intent(),), crash_point="before_send")
         case "crash_after_send":
@@ -293,7 +293,7 @@ def _build(sid: str, category: str, rng: random.Random, ids: _Ids) -> Scenario:
             return Scenario(**base, intents=(intent(),), concurrency=rng.randint(2, 4))
         case "concurrent_agents_lost_response":
             return Scenario(**base, intents=(intent(),), concurrency=rng.randint(2, 4),
-                            faults=(FaultSpec("LOST_RESPONSE", primary),))
+                            faults=(FaultSpec("TIMEOUT_AFTER_EXECUTION", primary),))
         case "operator_revoked":
             return Scenario(**base, intents=(intent(achievable=False),), revoke_operator=True)
     raise ValueError(f"unknown category {category}")

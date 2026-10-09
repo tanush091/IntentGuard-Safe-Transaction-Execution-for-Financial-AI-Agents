@@ -32,8 +32,8 @@ def test_concurrent_agents_produce_exactly_one_effect(tmp_path, agents):
     for t in threads:
         t.join(30)
     assert not errors
-    assert decisions.count(Decision.APPROVED) == 1
-    assert set(decisions) <= {Decision.APPROVED, Decision.IN_PROGRESS, Decision.DUPLICATE}
+    assert decisions.count(Decision.ALLOW) == 1
+    assert set(decisions) <= {Decision.ALLOW, Decision.DUPLICATE}
     assert len(w.live()) == 1
     assert w.sim.stats["executions"] == 1
 
@@ -58,7 +58,7 @@ def test_gateway_crash_is_recovered_on_restart_with_one_effect(tmp_path, point):
 
     w.restart()  # new incarnation: orphaned SUBMITTING attempts become UNKNOWN and are reconciled
     again = w.guard.submit(w.proposal(iid, request_id="restarted-agent"))
-    assert again.decision in (Decision.IN_PROGRESS, Decision.DUPLICATE)
+    assert again.decision in (Decision.DUPLICATE,)
     w.settle()
     assert w.guard._state(iid) == IntentState.COMPLETED
     assert len(w.live()) == 1
@@ -70,6 +70,6 @@ def test_attempt_budget_exhaustion_escalates(tmp_path):
     w.fault(FaultKind.TIMEOUT_BEFORE_EXECUTION, times=-1)
     w.guard.submit(w.proposal(iid))
     w.settle()
-    assert w.guard._state(iid) == IntentState.NEEDS_REVIEW
+    assert w.guard._state(iid) == IntentState.ESCALATED
     assert w.sim.stats["executions"] == 0
     assert w.sim.stats["create_calls"] == w.config.max_attempts

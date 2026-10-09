@@ -52,13 +52,13 @@ class FaultKind(StrEnum):
     # Network-level faults on create (applied before/after idempotency replay).
     OUTAGE = "OUTAGE"  # 503, nothing executed
     TIMEOUT_BEFORE_EXECUTION = "TIMEOUT_BEFORE_EXECUTION"  # caller times out, nothing executed
-    LOST_RESPONSE = "LOST_RESPONSE"  # executed, caller never sees the response
+    TIMEOUT_AFTER_EXECUTION = "TIMEOUT_AFTER_EXECUTION"  # executed, caller never sees the response
     # Execution-level faults (only on a fresh execution).
-    SLOW_SETTLEMENT = "SLOW_SETTLEMENT"  # params: settle_delay_s
+    DELAYED_STATUS = "DELAYED_STATUS"  # params: settle_delay_s
     DELAYED_VISIBILITY = "DELAYED_VISIBILITY"  # params: lag_s
-    AMOUNT_MISMATCH = "AMOUNT_MISMATCH"  # params: factor (settled = requested * factor)
+    CORRUPT_AMOUNT = "CORRUPT_AMOUNT"  # params: factor (settled = requested * factor)
     # Faults on other operations.
-    CANCEL_REJECTED = "CANCEL_REJECTED"  # cancel refused even when allowed
+    FAILED_CANCELLATION = "FAILED_CANCELLATION"  # cancel refused even when allowed
     LOOKUP_OUTAGE = "LOOKUP_OUTAGE"  # get/list fail with 503
 
 
@@ -66,10 +66,10 @@ CREATE_FAULTS = frozenset(
     {
         FaultKind.OUTAGE,
         FaultKind.TIMEOUT_BEFORE_EXECUTION,
-        FaultKind.LOST_RESPONSE,
-        FaultKind.SLOW_SETTLEMENT,
+        FaultKind.TIMEOUT_AFTER_EXECUTION,
+        FaultKind.DELAYED_STATUS,
         FaultKind.DELAYED_VISIBILITY,
-        FaultKind.AMOUNT_MISMATCH,
+        FaultKind.CORRUPT_AMOUNT,
     }
 )
 
@@ -250,7 +250,7 @@ class PaymentSimulator:
             else:
                 tx = self._execute(kind, order_id, customer_id, amount_minor, currency, idempotency_key, fp, metadata or {}, now)
 
-            if self._take_fault(FaultKind.LOST_RESPONSE, order_id):
+            if self._take_fault(FaultKind.TIMEOUT_AFTER_EXECUTION, order_id):
                 raise SimTimeout("response lost after execution")
             return self._refresh(tx)
 
@@ -286,8 +286,8 @@ class PaymentSimulator:
             tx = self._refresh(tx)
             if tx.status == TxStatus.CANCELLED:
                 return tx  # cancel is idempotent
-            if self._take_fault(FaultKind.CANCEL_REJECTED, tx.order_id):
-                raise SimConflict("cancellation rejected by provider", code="cancel_rejected")
+            if self._take_fault(FaultKind.FAILED_CANCELLATION, tx.order_id):
+                raise SimConflict("cancellation failed at the provider", code="cancellation_failed")
             if not self.is_cancellable(tx):
                 raise SimConflict(
                     f"{tx.kind} in status {tx.status} cannot be cancelled", code="not_cancellable"
@@ -361,11 +361,11 @@ class PaymentSimulator:
         settle_delay = self.default_settle_delay_s
         lag = 0.0
         settled = amount_minor
-        if (f := self._take_fault(FaultKind.SLOW_SETTLEMENT, order_id)) is not None:
+        if (f := self._take_fault(FaultKind.DELAYED_STATUS, order_id)) is not None:
             settle_delay = float(f.params.get("settle_delay_s", 60.0))
         if (f := self._take_fault(FaultKind.DELAYED_VISIBILITY, order_id)) is not None:
             lag = float(f.params.get("lag_s", 20.0))
-        if (f := self._take_fault(FaultKind.AMOUNT_MISMATCH, order_id)) is not None:
+        if (f := self._take_fault(FaultKind.CORRUPT_AMOUNT, order_id)) is not None:
             settled = int(round(amount_minor * float(f.params.get("factor", 10.0))))
 
         self._counter += 1

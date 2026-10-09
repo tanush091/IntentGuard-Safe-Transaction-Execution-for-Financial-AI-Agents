@@ -30,12 +30,12 @@ from tests.conftest import make_world
 FAULTS = st.sampled_from([
     (FaultKind.OUTAGE, {}),
     (FaultKind.TIMEOUT_BEFORE_EXECUTION, {}),
-    (FaultKind.LOST_RESPONSE, {}),
-    (FaultKind.SLOW_SETTLEMENT, {"settle_delay_s": 90}),
+    (FaultKind.TIMEOUT_AFTER_EXECUTION, {}),
+    (FaultKind.DELAYED_STATUS, {"settle_delay_s": 90}),
     (FaultKind.DELAYED_VISIBILITY, {"lag_s": 25}),
     (FaultKind.DELAYED_VISIBILITY, {"lag_s": 120}),  # violates the absence-window assumption
-    (FaultKind.AMOUNT_MISMATCH, {"factor": 2.0}),
-    (FaultKind.CANCEL_REJECTED, {}),
+    (FaultKind.CORRUPT_AMOUNT, {"factor": 2.0}),
+    (FaultKind.FAILED_CANCELLATION, {}),
     (FaultKind.LOOKUP_OUTAGE, {}),
 ])
 ACTIONS = st.one_of(

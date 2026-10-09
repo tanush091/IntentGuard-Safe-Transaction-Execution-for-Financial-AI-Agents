@@ -61,13 +61,13 @@ export function minorToMajorString(minor) {
 /** Tone used for badges, keyed by enum value from the backend. */
 const TONES = {
   // intent states
-  AUTHORIZED: 'info', IN_FLIGHT: 'info', PENDING_SETTLEMENT: 'info',
-  OUTCOME_UNKNOWN: 'warn', RETRYABLE: 'warn', DISCREPANCY: 'bad', NEEDS_REVIEW: 'bad',
-  COMPLETED: 'good', REVOKED: 'muted', CLOSED: 'muted',
+  AUTHORIZED: 'info', IN_FLIGHT: 'info', EXECUTING: 'info',
+  UNKNOWN: 'warn', RECONCILING: 'warn', DISCREPANCY: 'bad', CANCEL_REQUESTED: 'warn', ESCALATED: 'bad',
+  COMPLETED: 'good', CANCELLED: 'muted', CLOSED: 'muted',
   // decisions
-  APPROVED: 'good', REJECTED: 'bad', DUPLICATE: 'warn', IN_PROGRESS: 'info', HELD: 'bad',
+  ALLOW: 'good', REJECT: 'bad', DUPLICATE: 'warn', HOLD_FOR_REVIEW: 'bad',
   // attempt statuses
-  SUBMITTING: 'info', ACKNOWLEDGED: 'good', UNKNOWN: 'warn', NO_EFFECT: 'muted',
+  SUBMITTING: 'info', SUCCEEDED: 'good', RECONCILED: 'muted',
   // provider statuses
   PENDING: 'info', CANCELLED: 'muted', FAILED: 'bad',
   // effect classes
