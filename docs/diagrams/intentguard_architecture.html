@@ -32,17 +32,19 @@
 <div class="subtitle">The AI agent only proposes. The gateway checks every proposal against the human approval, moves the money itself, and verifies the result with the provider.</div>
 
 <!-- ============ users ============ -->
-<div class="b person" style="left:30px;top:110px;width:290px;height:70px"><div class="t">👤 Operator</div><div class="s">approves refunds and payment holds</div></div>
-<div class="b person" style="left:30px;top:195px;width:290px;height:70px"><div class="t">👤 Reviewer</div><div class="s">resolves escalated cases</div></div>
+<div class="b person" style="left:30px;top:110px;width:290px;height:70px"><div class="t">👤 Operator</div><div class="s">signs in · approves refunds and holds</div></div>
+<div class="b person" style="left:30px;top:195px;width:290px;height:70px"><div class="t">👤 Reviewer</div><div class="s">resolves escalated cases and mismatches</div></div>
 <div class="b person" style="left:30px;top:280px;width:290px;height:70px"><div class="t">👤 Auditor / Finance</div><div class="s">checks the tamper-evident audit chain</div></div>
-<div class="b agent" style="left:30px;top:410px;width:290px;height:118px"><div class="t">🤖 AI agent</div><div class="s">reads the support ticket and proposes an action<br>rule extractor, or an LLM (OpenAI · Ollama · Gemini)</div></div>
+<div class="b agent" style="left:30px;top:400px;width:290px;height:150px"><div class="t">🤖 AI agent</div><div class="s">reads the support ticket and proposes an action<br>rule extractor, or an LLM (OpenAI · Ollama · Gemini)<br>short-lived token scoped to one intent</div></div>
 
-<div class="b person" style="left:390px;top:165px;width:250px;height:130px"><div class="t">🖥️ Dashboard  :3000</div><div class="s">React + Vite · <i>frontend/</i><br>overview · intents · reviews<br>audit · experiments</div></div>
+<div class="b person" style="left:390px;top:150px;width:250px;height:160px"><div class="t">🖥️ Dashboard  :3000</div><div class="s">React + Vite · <i>frontend/</i> · sign-in, roles<br>overview · intents · exceptions<br>reviews · reconciliation · audit<br>experiments · admin</div></div>
+
+<div class="b" style="left:390px;top:470px;width:250px;height:112px;background:#F5F1FF;border:1.6px solid #8B6FD6"><div class="t">🔎 Exception investigator</div><div class="s">classifies unclear cases, recommends one fixed action · <b>advisory</b>: a policy gate decides</div></div>
 
 <!-- ============ gateway ============ -->
 <div class="b gwbox" style="left:700px;top:92px;width:700px;height:668px;padding:0"><div class="hdr">IntentGuard gateway  :8000 &nbsp;<span style="font-weight:400;font-size:15px">backend/gateway_api + backend/intentguard</span></div></div>
 
-<div class="b step" style="left:725px;top:150px;width:650px;height:62px"><div class="t">HTTP API · FastAPI</div><div class="s">/api/intents · /proposals · /agent · /reviews · /audit · /metrics · /experiments</div></div>
+<div class="b step" style="left:725px;top:150px;width:650px;height:62px"><div class="t">HTTP API · FastAPI · roles and scoped tokens</div><div class="s">/auth · /intents · /agent · /exceptions · /review-cases · /reconciliation · /webhooks · /audit · /admin</div></div>
 
 <div class="b sub" style="left:725px;top:228px;width:650px;height:310px"></div>
 <div class="sublabel" style="left:742px;top:236px">Protocol engine · backend/intentguard/engine.py</div>
@@ -54,7 +56,7 @@
 <div class="b step" style="left:745px;top:410px;width:180px;height:102px"><div class="t"><span class="num">6</span>Recover</div><div class="s">cancel + confirm if allowed, else escalate</div></div>
 
 <div class="b step" style="left:725px;top:545px;width:205px;height:92px"><div class="t">State machine</div><div class="s">domain.py · every state change checked</div></div>
-<div class="b step" style="left:947px;top:545px;width:206px;height:92px"><div class="t">⏱ Background worker</div><div class="s">re-checks pending / unknown · crash recovery on start</div></div>
+<div class="b step" style="left:947px;top:545px;width:206px;height:92px"><div class="t">⏱ Worker + webhooks</div><div class="s">re-checks unknowns · webhooks · crash recovery</div></div>
 <div class="b step" style="left:1170px;top:545px;width:205px;height:92px"><div class="t">Provider port</div><div class="s">providers/ · HttpProvider · InProcessProvider</div></div>
 
 <div class="b" style="left:725px;top:652px;width:650px;height:96px;background:#fff;border:1.5px dashed #9FB7B0">
@@ -67,18 +69,18 @@
 <!-- ============ ledger ============ -->
 <div class="b sub" style="left:700px;top:820px;width:700px;height:175px"></div>
 <div class="sublabel" style="left:718px;top:830px">Ledger database · SQLite / PostgreSQL · backend/intentguard/models.py</div>
-<div class="b store" style="left:718px;top:870px;width:120px;height:100px"><div class="t" style="font-size:15px">operators<br>orders</div></div>
+<div class="b store" style="left:718px;top:870px;width:120px;height:100px"><div class="t" style="font-size:15px">users<br>tokens<br>orders</div></div>
 <div class="b store" style="left:850px;top:870px;width:150px;height:100px"><div class="t" style="font-size:15px">intents<br>proposals<br>attempts</div></div>
-<div class="b store" style="left:1012px;top:870px;width:130px;height:100px"><div class="t" style="font-size:15px">effects</div><div class="s" style="font-size:12.5px">≤ 1 live intended effect per intent (DB rule)</div></div>
-<div class="b store" style="left:1154px;top:870px;width:100px;height:100px"><div class="t" style="font-size:15px">review<br>cases</div></div>
-<div class="b store" style="left:1266px;top:870px;width:116px;height:100px"><div class="t" style="font-size:15px">audit events</div><div class="s" style="font-size:12.5px">append-only · hash-chained</div></div>
+<div class="b store" style="left:1012px;top:870px;width:130px;height:100px"><div class="t" style="font-size:15px">effects</div><div class="s" style="font-size:12.5px">≤ 1 counted effect per intent (DB rule)</div></div>
+<div class="b store" style="left:1154px;top:870px;width:100px;height:100px"><div class="t" style="font-size:15px">reviews<br>webhooks<br>runs</div></div>
+<div class="b store" style="left:1266px;top:870px;width:116px;height:100px"><div class="t" style="font-size:15px">audit log</div><div class="s" style="font-size:12.5px">append-only · hash-chained</div></div>
 
 <!-- ============ provider ============ -->
 <div class="b sub" style="left:1470px;top:260px;width:300px;height:400px"></div>
 <div class="sublabel" style="left:1488px;top:270px">Payment provider  :8001</div>
 <div class="s" style="position:absolute;left:1488px;top:292px">backend/provider_api + paysim (simulator)</div>
 <div class="b prov" style="left:1488px;top:325px;width:264px;height:80px"><div class="t">/v1/refunds · /v1/authorizations</div><div class="s">create · get · list · cancel / void</div></div>
-<div class="b prov" style="left:1488px;top:420px;width:264px;height:120px"><div class="t">paysim engine</div><div class="s">pending → completed · cancel only while pending · idempotency keys · delayed search · 8 injectable faults</div></div>
+<div class="b prov" style="left:1488px;top:420px;width:264px;height:120px"><div class="t">paysim engine</div><div class="s">pending → completed · cancel only while pending · idempotency keys · delayed search · signed webhooks · 10 injectable faults</div></div>
 <div class="b prov" style="left:1488px;top:555px;width:264px;height:80px"><div class="t">/v1/ledger</div><div class="s">ground truth: every real transaction</div></div>
 
 <!-- ============ benchmark ============ -->
@@ -117,6 +119,10 @@
   </g>
   <!-- port to provider -->
   <path d="M1375 590 C 1420 590, 1420 365, 1486 365" stroke="#0F7B5F" stroke-width="4" fill="none" marker-end="url(#gr)"/>
+  <!-- investigator advice, applied through the engine's own operations -->
+  <path d="M640 520 L743 470" stroke="#8B6FD6" stroke-width="2.5" fill="none" stroke-dasharray="6 4" marker-end="url(#g)"/>
+  <!-- signed webhooks from the provider -->
+  <path d="M1540 662 C 1520 700, 1450 712, 1403 712" stroke="#3C6E80" stroke-width="2.5" fill="none" stroke-dasharray="6 4" marker-end="url(#g)"/>
   <!-- ledger -->
   <path d="M1050 762 L1050 818" stroke="#5B6B73" stroke-width="2.5" fill="none" marker-start="url(#g)" marker-end="url(#g)"/>
   <!-- benchmark -->
@@ -137,10 +143,12 @@
 <div class="lbl" style="left:960px;top:516px;color:var(--green);font-weight:400">wrong effect</div>
 <div class="lbl" style="left:1385px;top:470px;color:var(--green);border:1.5px solid var(--green)">only path<br>to money</div>
 <div class="lbl" style="left:1062px;top:780px;color:#3E4B52;font-weight:400">read / write in locked transactions</div>
-<div class="lbl" style="left:470px;top:568px;color:var(--muted);font-weight:400">same engine, in-process provider</div>
+<div class="lbl" style="left:400px;top:590px;color:var(--muted);font-weight:400">same engine, in-process provider</div>
+<div class="lbl" style="left:600px;top:448px;color:#6B4FC0;font-weight:400">advice</div>
+<div class="lbl" style="left:1430px;top:722px;color:#3C6E80;font-weight:400">signed webhooks<br>(re-fetched)</div>
 
 <div class="legend" style="left:30px;top:1030px;width:1740px">
-  <b style="color:#B07400">Amber</b> = untrusted AI input &nbsp;·&nbsp; <b style="color:#0F7B5F">Green</b> = protocol path that can move money &nbsp;·&nbsp; dashed boxes = offline research harness &nbsp;·&nbsp;
+  <b style="color:#B07400">Amber</b> = untrusted AI input &nbsp;·&nbsp; <b style="color:#6B4FC0">Violet</b> = advisory AI output &nbsp;·&nbsp; <b style="color:#0F7B5F">Green</b> = protocol path that can move money &nbsp;·&nbsp; dashed boxes = offline research harness &nbsp;·&nbsp;
   Ports: dashboard 3000 · gateway 8000 · provider 8001 &nbsp;·&nbsp; Code: github.com/tanush091/IntentGuard-Safe-Transaction-Execution-for-Financial-AI-Agents
 </div>
 </div></body></html>

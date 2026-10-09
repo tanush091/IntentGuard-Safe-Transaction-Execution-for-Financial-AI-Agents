@@ -4,7 +4,8 @@ globs: *
 ---
 # General rules
 
-- Read docs/README.md, docs/architecture/overview.md and RULES.md before writing code.
+- Read docs/README.md, docs/architecture/overview.md and docs/RULES.md before writing code. The uppercase docs in docs/ are the target spec (API.md is the HTTP contract); the subfolders describe the code as built.
+- An API change updates docs/API.md and re-exports docs/api/openapi.json (`python scripts/export_openapi.py`); CI fails on drift.
 - Python 3.12+, Pydantic v2, SQLAlchemy 2.0, type annotations.
 - Reuse existing components; do not duplicate logic. Keep functions small.
 - Do not modify unrelated files. Small, focused, verified commits.

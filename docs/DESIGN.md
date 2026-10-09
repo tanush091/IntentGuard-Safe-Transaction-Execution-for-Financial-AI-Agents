@@ -1,5 +1,12 @@
 # Design System (DESIGN.md) — IntentGuard Recovery
 
+> **Status: implemented** in `frontend/`:
+> - tokens in `frontend/src/styles/tokens.css`, components in `frontend/src/components/`, pages in `frontend/src/pages/`;
+> - fonts self-hosted via `@fontsource` (no third-party requests, so the CSP can stay `'self'`);
+> - checked in headless Chrome at 1440 px and 390 px, in dark and light themes.
+>
+> Differences from this spec are noted inline as *planned* or *as built*.
+
 ## 1. Philosophy
 **High-tech financial observability.** The dashboard exists so an operator can answer three questions fast: *What is stuck? What was verified? What needs me?* Visual weight follows risk: unresolved and escalated items are loud, verified items are calm.
 
@@ -44,18 +51,22 @@ Line heights: body 1.5, headings 1.2, mono blocks 1.6. Tabular numerals for all 
 
 Rule: color is never the only signal; every status also has a label and icon.
 
+*As built:* `PROPOSED`/`VALIDATED`/`REJECTED`/`BLOCKED` are statuses of a single proposal, not intent states (DECISIONS ADR-029). The map lives in `STATE_META` in `frontend/src/domain.js`.
+
 ### State → color map
 | State | Color | Pill label |
 |-------|-------|-----------|
 | `AUTHORIZED` | indigo | Authorized |
-| `PROPOSED`, `VALIDATED` | indigo | Proposed / Validated |
+| `PROPOSED`, `VALIDATED` *(proposal status)* | indigo | Proposed / Validated |
 | `IN_FLIGHT`, `EXECUTING` | cyan (pulse) | Executing |
 | `UNKNOWN`, `RECONCILING` | cyan (dashed border) | Verifying |
 | `COMPLETED` | emerald | Completed ✓ |
 | `CANCEL_REQUESTED` | amber | Cancelling |
 | `CANCELLED` | slate | Cancelled |
-| `REJECTED`, `BLOCKED` | rose | Blocked |
+| `REJECTED`, `BLOCKED` *(proposal status)* | rose | Blocked |
+| `DISCREPANCY` | amber | Discrepancy |
 | `ESCALATED` | amber | Needs review |
+| `CLOSED` | slate | Closed |
 
 ### Light theme
 Provide the same token names under `[data-theme="light"]` and `@media (prefers-color-scheme: light)`: `--bg-deep #f8fafc`, `--bg-secondary #ffffff`, `--surface-glass rgba(255,255,255,.85)`, `--border rgba(15,23,42,.1)`, `--text #0f172a`, `--text-muted #475569`. Accents darken one step to keep 4.5:1 contrast on light surfaces.
@@ -68,11 +79,12 @@ Provide the same token names under `[data-theme="light"]` and `@media (prefers-c
 ## 5. Components
 
 ### 5.1 State pipeline
-Five sequential nodes: **Authorized → Proposed → Validated → Executing → Terminal** (Completed | Blocked | Escalated).
+Five sequential nodes: **Authorized → Proposed → Validated → Executing → Outcome**. The outcome node shows Completed, Blocked, Needs review, Cancelled, or Closed ("resolved by a reviewer").
 - Active node pulses with cyan glow.
 - Passed nodes turn emerald.
 - Blocked node turns rose and shows an immediate callout with the reason code and plain-language text.
 - `UNKNOWN`/`RECONCILING` render as a dashed cyan "Verifying" branch under Executing, never as an error.
+- *As built:* `DISCREPANCY` and `CANCEL_REQUESTED` show the outcome node as in progress, because the gateway is still recovering on its own. Only `ESCALATED` reads "needs a human". The node logic is `pipelineStages` in `frontend/src/domain.js`, which has unit tests.
 
 ### 5.2 Status pill
 Rounded, 12px text, icon + label. Classes: `state-completed`, `state-blocked`, `state-escalated`, `state-verifying`, `state-active`.
@@ -84,7 +96,7 @@ Vertical list, newest at bottom, monospace timestamps, event icon, one-line summ
 Sticky header, 1px borders, monospace ID columns, right-aligned tabular money, row hover highlight, inline actions (e.g. **Resolve ✓** on open review cases), keyboard-navigable.
 
 ### 5.5 Metric cards
-Large number, label, delta vs previous window. Cards: Completed, Blocked, Verifying, Escalated, Duplicates suppressed, Auto-resolved rate, Median time to verified.
+Large number, label, delta vs previous window (*planned*; the cards show the number for the selected window). Cards: Completed, Blocked, Verifying, Escalated, Duplicates suppressed, Auto-resolved rate, Median time to verified.
 
 ### 5.6 Investigator panel (AI)
 Violet-bordered card labelled **AI-generated · advisory**. Shows classification, summary, evidence refs, recommended action and the **policy verdict** (permitted / not permitted + rule). The "Apply" button is disabled when the policy verdict is not permitted.
@@ -96,12 +108,12 @@ Four one-click cards with category badges: `SAFETY BARRIER` (unauthorized amount
 Monospace, autoscroll with pause-on-scroll-up, level colors (info slate, warn amber, error rose, verified emerald).
 
 ### 5.9 Audit verification badge
-"Chain verified ✓ (N entries)" in emerald or "Chain broken at #K" in rose with link to the entry.
+"Chain verified ✓ (N entries)" in emerald or "Chain broken at #K" in rose with link to the entry (*as built:* the badge names the entry and its chain; a direct link is *planned*). Shown in the top bar for roles that may verify.
 
 ## 6. Page inventory
 | Page | Contents |
 |------|----------|
-| Overview | metric cards, recent intents, live console |
+| Overview | metric cards, the four demo scenario cards (simulator mode), recent intents, live console |
 | Intents | filterable table, detail view with pipeline + timeline + attempts + effects |
 | Exceptions | stuck/unknown cases, investigate action |
 | Review queue | open cases, resolve dialog |
@@ -109,9 +121,12 @@ Monospace, autoscroll with pause-on-scroll-up, level colors (info slate, warn am
 | Audit | log search, chain verification |
 | Experiments | benchmark summary tables and charts |
 | Admin | users, service tokens, policies, providers |
+| Login | email + password; the session survives reloads through the refresh cookie |
 
 ## 7. Responsive behavior
 Breakpoints: Desktop 1440, Laptop 1024, Tablet 768. Below 1024 the sidebar collapses to icons; below 768 tables become card lists. Mobile is out of scope for v1 beyond readability.
+
+*As built:* at 390 px no page scrolls horizontally. Wide tables scroll inside their own container.
 
 ## 8. Accessibility
 - WCAG 2.1 AA contrast; focus rings (2px cyan) on all interactive elements.

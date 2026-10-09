@@ -9,3 +9,6 @@ globs: *
 - Treat AI agents as untrusted callers: a proposal executes only if it matches the durable intent exactly.
 - Never report an effect as completed or reversed without the provider's read-back.
 - The audit log is append-only and hash-chained; never update or delete audit events.
+- Every endpoint checks a capability (`require(...)` in `backend/gateway_api/security.py`); agents only get intent- or customer-scoped tokens. Browsers never receive the refresh token in a response body.
+- LLM output (agent extraction, investigator) is validated against a strict schema and rejected, never repaired; only the deterministic policy gate decides what runs.
+- Fault injection and other simulator helpers stay under `/api/dev/*` behind `SIMULATOR_MODE`.

@@ -18,16 +18,18 @@ for Financial AI Agents Under Uncertain Outcomes**.
 |---|---|
 | States, decisions, transitions, cancellation policy | `backend/intentguard/domain.py` |
 | Proposal checks (pure functions) | `backend/intentguard/checks.py` |
+| Exception investigator and policy gate | `backend/investigator/` |
 | Protocol behaviour (decide, reserve, execute, reconcile, recover, review) | `backend/intentguard/engine.py` |
 | Tables and database constraints | `backend/intentguard/models.py`, `db.py`; audit log in `audit.py` |
 | Provider adapters | `backend/intentguard/providers/` |
 | Ticket → proposal extraction | `backend/intentguard/agents/` |
-| Gateway HTTP API and settings | `backend/gateway_api/` |
+| Gateway HTTP API, auth, webhooks, settings | `backend/gateway_api/` |
 | Mock provider HTTP API / simulator | `backend/provider_api/`, `backend/paysim/` |
 | Tests | `backend/tests/` |
 | Benchmark | `experiments/bench/` |
 | Dashboard | `frontend/src/` |
-| Documentation | `docs/` (see [docs/README.md](docs/README.md)) |
+| Documentation | `docs/` (see [README.md](README.md)); target spec at the root, as-built pages in subfolders |
+| API schema | `docs/api/openapi.json`, exported by `scripts/export_openapi.py` |
 
 Read [RULES.md](RULES.md) before changing protocol code.
 
@@ -37,22 +39,25 @@ Read [RULES.md](RULES.md) before changing protocol code.
 2. Keep business logic in the engine and checks; route handlers only translate HTTP.
 3. A new safeguard gets a `ProtocolConfig` switch and an ablation test.
 4. Commit messages: conventional and imperative (e.g. `feat: reconcile lost responses by idempotency key`,
-   `test: cover revoke from RETRYABLE`).
+   `test: cover cancel from RECONCILING`).
 
 ## Before opening a pull request
 
 ```bash
-cd backend && python -m pytest          # 42 tests must pass
-npm --prefix frontend run build         # dashboard must build
+cd backend && python -m pytest -q                         # 127 tests must pass
+cd frontend && npm test && npm run check:contract && npm run build
+ruff check .
+python scripts/export_openapi.py --check                  # after an API change: re-export without --check
 ```
 
-CI (`.github/workflows/ci.yml`) runs both. Update the matching page in `docs/` when behaviour
-changes.
+CI (`.github/workflows/ci.yml`) runs these and more: the suite on PostgreSQL, a quick benchmark
+safety gate, secret scanning, dependency audits and the Docker build. Update the matching page in
+`docs/` when behaviour changes.
 
 ## Team roles
 
 - **U V Tanush** (`tanush091`): project architecture, gateway and payment simulator, core framework
 - **Narla Sindhuja** (`NarlaSindhuja-5` / `narlasindhuja45@gmail.com`): safety protocol, reconciliation and recovery, experimental methodology and benchmark validation
 
-The earlier branch strategy is in [docs/archive/git_workflow.md](docs/archive/git_workflow.md)
+The earlier branch strategy is in [archive/git_workflow.md](archive/git_workflow.md)
 (written for the earlier prototype).

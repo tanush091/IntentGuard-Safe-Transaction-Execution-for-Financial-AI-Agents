@@ -4,7 +4,8 @@ globs: backend/tests/**/*.py
 ---
 # Testing rules
 
-- Tests live in `backend/tests/` and run with `cd backend && python -m pytest` (42 tests).
+- Tests live in `backend/tests/` and run with `cd backend && python -m pytest -q` (127 tests). Set `TEST_DATABASE_URL` (a database whose name contains `test`) to run them on PostgreSQL, as CI does.
+- HTTP tests use the `api` / `api_inprocess` fixtures (`backend/tests/api_support.py`); dashboard tests run with `cd frontend && npm test`.
 - Use the `make_world` fixture (`backend/tests/conftest.py`): a gateway, a simulator and a simulated clock on a temporary SQLite database.
 - Cover failure and fault-injection paths, not only the happy path.
 - A new safeguard needs an ablation test in `test_ablations.py` showing it changes behaviour.

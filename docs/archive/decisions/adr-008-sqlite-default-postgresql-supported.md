@@ -1,3 +1,5 @@
+> **Archived.** Merged into the single register [docs/DECISIONS.md](../../DECISIONS.md) on 2026-10-10; see the [old → new number map](../../decisions/README.md). Kept unchanged for history; names in this file are the prototype's.
+
 # ADR-008: SQLite by default, PostgreSQL supported
 
 **Status:** Accepted (carries forward ADR-001 of the archived DECISIONS.md)

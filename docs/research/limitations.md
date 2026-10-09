@@ -1,11 +1,11 @@
 # Limitations
 
-These four limitations are stated in the project README and apply to every result in
+These four limitations apply to every result in
 [results.md](results.md):
 
 - The provider is a simulator modelled on documented provider behaviour; it is not a real provider sandbox.
 - The baseline agent's errors come from an explicit error model. Baseline D's offline reviewer reuses the deterministic ticket extractor, which is an optimistic stand-in for an LLM reviewer; run with `--llm-reviewer` for a real one.
-- Experiments use SQLite (shared-cache in-memory). PostgreSQL is supported by the code and Docker setup but was not exercised by the automated tests.
+- Experiments use SQLite (shared-cache in-memory). PostgreSQL is supported by the code and Docker setup, and CI runs the backend tests against it, but no benchmark run has used it.
 - Latency figures are in-process wall-clock times and say nothing about production performance.
 
 ## Further threats to validity

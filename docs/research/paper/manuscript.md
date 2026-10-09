@@ -88,16 +88,18 @@ drive               reconcile unknown outcomes; recover discrepancies; retry onl
 **Checks.** Operator active and permitted for the operation and amount (re-checked at proposal time).
 Operation, customer, order, currency and amount equal to the intent. Amount within the order's
 remaining balance across *all* intents. Intent not already fulfilled, not in flight, not held for
-review, and within its attempt budget.
+review, and within its attempt budget. Two policy checks (a global kill switch and a maximum amount)
+exist for operations but are off by default and in every benchmark arm.
 
-**States.** `AUTHORIZED, IN_FLIGHT, PENDING_SETTLEMENT, OUTCOME_UNKNOWN, RETRYABLE, DISCREPANCY, NEEDS_REVIEW, COMPLETED, REVOKED, CLOSED`.
-A completed intent can be reopened (`COMPLETED → DISCREPANCY`) if a late-visible duplicate is found
-during the post-completion watch.
+**States.** `AUTHORIZED, IN_FLIGHT, EXECUTING, UNKNOWN, RECONCILING, DISCREPANCY, CANCEL_REQUESTED, ESCALATED, COMPLETED, CANCELLED, CLOSED`.
+`CANCEL_REQUESTED` is reached only through the operator cancel action, which the benchmark does not
+exercise. A completed intent can be reopened (`COMPLETED → DISCREPANCY`) if a late-visible
+duplicate is found during the post-completion watch.
 
 **Reconciliation.** An attempt without a response is `UNKNOWN`, never "failed". The gateway reads
 known transactions by ID (strongly consistent) and searches the order's transactions
 (eventually consistent), attributing results by `intent_id`, `attempt_id` or idempotency key. An
-`UNKNOWN` attempt becomes `NO_EFFECT` only if a successful search happens at least
+`UNKNOWN` attempt becomes `RECONCILED` only if a successful search happens at least
 `absence_window_s` (30 s) after the attempt. Only then does the gateway retry, under the same key.
 If the provider cannot be queried, the intent escalates to review after 300 s instead of being
 retried.
@@ -221,13 +223,14 @@ rejects a second *full* refund. Duplicates surface mainly for partial refunds.
 
 ## 8. Verification beyond the benchmark
 
-The test suite (42 tests) includes:
+The backend test suite (127 tests; all pass on SQLite and on PostgreSQL 16) includes:
 - one test per row of the specification's behaviour table;
 - a test per ablation showing the behaviour change it causes;
 - 2/4/8 concurrent agents producing exactly one effect;
 - gateway crashes at both injection points;
 - Hypothesis property tests over random faults, wrong proposals, crashes and restarts, checking that no unescalated duplicate or unintended effect exists, that `COMPLETED` is always true at the provider, and that the audit chain verifies;
-- end-to-end HTTP tests through the real provider API.
+- end-to-end HTTP tests through the real provider API;
+- tests of the gateway's HTTP surface, which the benchmark does not exercise: authentication and token handling, role and scope checks for every endpoint, the API contract (error envelope, strict bodies, pagination, idempotent replay), signed webhooks (forged, stale, duplicate and out-of-order events), and the exception investigator (malformed model output is rejected, and the policy gate is re-checked before a recommendation is applied).
 
 ## 9. Limitations and threats to validity
 
@@ -235,7 +238,7 @@ The test suite (42 tests) includes:
 2. **Scripted agent errors.** Error types and rates come from an explicit model, not from observed LLM behaviour. An evaluation with real LLM agents is future work (`--llm-reviewer` and the gateway's agent endpoint support it).
 3. **Optimistic baseline D.** Offline, it shares the extractor that defines correct proposals, which overstates what an LLM reviewer would catch.
 4. **Absence window.** It is a protocol parameter. If the provider's visibility lag exceeds it *and* the stable key is unavailable, duplicates can occur (Table 3). Scenarios with lags longer than the window are included.
-5. **Storage.** Experiments run on SQLite. PostgreSQL code paths (row locks, triggers) exist but were not exercised by the automated tests.
+5. **Storage.** Experiments run on SQLite. CI also runs the backend tests against PostgreSQL, which exercises its code paths (row locks, triggers), but no benchmark run has used PostgreSQL.
 6. **Latency.** Figures are in-process wall-clock times and do not predict production latency.
 7. **Provenance.** This run was produced from a working tree that had not been committed at the time: its metadata records `283c6bb`, which does not contain the benchmark code (committed afterwards as `2bbb6a9`). A full rerun from the committed code on 2026-10-09 reproduced every per-scenario outcome and every non-latency mean and confidence interval exactly; only wall-clock latency differed.
 

@@ -4,7 +4,7 @@ globs: backend/**/*.py
 ---
 # Backend rules
 
-- Only the engine (`backend/intentguard/engine.py`) calls a `PaymentProvider`. Agents (`backend/intentguard/agents/`) and API handlers (`backend/gateway_api/`) produce proposals and never import a provider adapter or `paysim`.
+- Only the engine (`backend/intentguard/engine.py`) calls a `PaymentProvider`. Agents (`backend/intentguard/agents/`), the investigator (`backend/investigator/`) and API handlers (`backend/gateway_api/`) produce proposals or recommendations and never import a provider adapter or `paysim`.
 - Business logic lives in `engine.py` and the pure checks in `checks.py`; route handlers only translate HTTP.
 - Tables and database constraints live in `backend/intentguard/models.py`; the audit log is written only through `audit.append`.
 - Persist the attempt (`SUBMITTING`, with its key) before the provider call; never hold a database lock during provider I/O.

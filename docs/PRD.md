@@ -1,6 +1,7 @@
 # Product Requirements Document (PRD.md) — IntentGuard Recovery
 
 > **Status:** Draft v1. Evolves the existing IntentGuard research prototype into a product direction.
+> **Build status (2026-10-10):** every P0 and P1 requirement below is implemented against the **simulated** provider. Of P2, the dashboard and the authorization-hold workflow are implemented, and analytics are partial; real providers are not built. The Status column in §6 gives the detail, and [FEATURES.md](FEATURES.md) has the per-feature list. No real provider or real money is involved.
 > Market, competitor and pricing statements are **unvalidated hypotheses** until confirmed with design partners.
 
 ## 1. Product
@@ -60,44 +61,50 @@ A timeout is **not** proof of failure. A successful API response is **not** proo
 ## 6. Functional requirements
 
 ### P0 — Execution core
-| ID | Requirement |
-|----|-------------|
-| F-01 | **Durable intent binding**: every operation anchored to an operator-created authorization (`intent_id`). |
-| F-02 | **Deterministic validation**: customer, order, operation, amount, currency, remaining balance, operator permission, attempt budget. |
-| F-03 | **Idempotent execution**: stable provider idempotency key per intent (`ig-<intent>-g<generation>`), unaffected by new agent request IDs or restarts. |
-| F-04 | **Transaction state machine**: explicit legal transitions; terminal states immutable. |
-| F-05 | **Timeout recovery**: timeout → `UNKNOWN` → reconcile before any retry. |
-| F-06 | **Persist-before-call**: decision and attempt stored durably before any provider call. |
+| ID | Requirement | Status |
+|----|-------------|--------|
+| F-01 | **Durable intent binding**: every operation anchored to an operator-created authorization (`intent_id`). | ✅ |
+| F-02 | **Deterministic validation**: customer, order, operation, amount, currency, remaining balance, operator permission, attempt budget. | ✅ |
+| F-03 | **Idempotent execution**: stable provider idempotency key per intent (`ig-<intent>-g<generation>`), unaffected by new agent request IDs or restarts. | ✅ |
+| F-04 | **Transaction state machine**: explicit legal transitions; terminal states immutable. | ✅ |
+| F-05 | **Timeout recovery**: timeout → `UNKNOWN` → reconcile before any retry. | ✅ |
+| F-06 | **Persist-before-call**: decision and attempt stored durably before any provider call. | ✅ |
 
 ### P1 — Recovery and policy
-| ID | Requirement |
-|----|-------------|
-| F-10 | **Active reconciliation**: query provider by transaction ID and order reference; "not found" counts as absence only after a configurable window (eventual consistency). |
-| F-11 | **Webhook reconciliation**: handle delayed, duplicated and out-of-order provider events; verify signatures. |
-| F-12 | **State-aware recovery**: cancel pending items and *verify* cancellation; completed effects cannot be reversed, only escalated. |
-| F-13 | **Refund policy engine**: limits, authorization, remaining refundable balance. |
-| F-14 | **Review queue**: open cases with discrepancy amount and evidence; operator resolve action. |
-| F-15 | **AI exception investigator**: classify ambiguous cases and summarize evidence; recommendation must be one of a permitted, policy-checked action set. |
+| ID | Requirement | Status |
+|----|-------------|--------|
+| F-10 | **Active reconciliation**: query provider by transaction ID and order reference; "not found" counts as absence only after a configurable window (eventual consistency). | ✅ |
+| F-11 | **Webhook reconciliation**: handle delayed, duplicated and out-of-order provider events; verify signatures. | ✅ (simulator webhooks) |
+| F-12 | **State-aware recovery**: cancel pending items and *verify* cancellation; completed effects cannot be reversed, only escalated. | ✅ |
+| F-13 | **Refund policy engine**: limits, authorization, remaining refundable balance. | ✅ |
+| F-14 | **Review queue**: open cases with discrepancy amount and evidence; operator resolve action. | ✅ |
+| F-15 | **AI exception investigator**: classify ambiguous cases and summarize evidence; recommendation must be one of a permitted, policy-checked action set. | ✅ (offline classifier default; LLM optional) |
 
 ### P2 — Scale-out
-| ID | Requirement |
-|----|-------------|
-| F-20 | Multi-provider adapters behind a common port. |
-| F-21 | Operations dashboard: stuck payments, recovered cases, mismatches, audit evidence. |
-| F-22 | Recovery analytics: auto-resolved rate, time to resolution, human-intervention rate, cost per resolved exception. |
-| F-23 | Secondary workflow: payment authorization hold and cancellation. |
+| ID | Requirement | Status |
+|----|-------------|--------|
+| F-20 | Multi-provider adapters behind a common port. | 🔶 port + simulator only; real adapters planned |
+| F-21 | Operations dashboard: stuck payments, recovered cases, mismatches, audit evidence. | ✅ |
+| F-22 | Recovery analytics: auto-resolved rate, time to resolution, human-intervention rate, cost per resolved exception. | 🔶 metrics summary; cost per exception planned |
+| F-23 | Secondary workflow: payment authorization hold and cancellation. | ✅ |
 
 ## 7. Phasing
 
 | Phase | Scope | Exit criteria |
 |-------|-------|---------------|
-| **0 – Prototype (done per repo README)** | Protocol core, simulated provider, gateway API, benchmark, React dashboard | Seeded benchmark reproducible; test suite green |
+| **0 – Prototype (done)** | Protocol core, simulated provider, gateway API, benchmark, React dashboard | Seeded benchmark reproducible; test suite green |
 | **1 – Execution core on a real sandbox** | One provider in test mode (e.g. Stripe test mode, or a Razorpay test integration if available), idempotent gateway, durable ledger, authz checks | Duplicate-effect rate zero in failure-injection suite |
 | **2 – Recovery + AI investigator** | Timeout/webhook recovery, review queue, constrained LLM classifier | Auto-recovery on supported scenarios; every decision cites evidence |
 | **3 – Reconciliation + dashboard + metrics** | Order/payment/refund matching, timelines, analytics, failure-injection report | End-to-end demo; measured results vs baseline |
 | **4 – Expansion (conditional)** | Additional providers, enterprise policies, integrations | Only after Phase 3 reliability is demonstrated and design partners exist |
 
 Timelines are intentionally not committed; a three-week MVP slice (execution core → recovery → reconciliation/dashboard) is a planning aid, not a guarantee.
+
+**Where the build stands:**
+- Phase 0 is done.
+- The scope of phases 2 and 3 is implemented **on the simulator**: webhook recovery, review queue, constrained investigator, matching runs, timelines, metrics and the dashboard.
+- Their exit criteria that need real conditions are not met: auto-recovery measured on a real provider, and a failure-injection report beyond the benchmark.
+- Phase 1, a real sandbox adapter, has not started; it waits on ADR-012.
 
 ## 8. Success metrics
 
@@ -150,4 +157,4 @@ No prices are proposed. Validate with a small number of design partners first (s
 1. Primary product direction to own first: execution reliability, AI reconciliation, autonomous refunds, or full platform?
 2. First provider (Stripe test mode vs Razorpay test)?
 3. Initial market (Indian businesses vs global SaaS/e-commerce)?
-4. Is Redis/Celery needed in Phase 1, or is a PostgreSQL-backed worker sufficient?
+4. Is Redis/Celery needed in Phase 1, or is a PostgreSQL-backed worker sufficient? (So far an in-process worker on PostgreSQL is enough for the simulator; no throughput measurement exists.)

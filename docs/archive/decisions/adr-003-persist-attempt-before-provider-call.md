@@ -1,3 +1,5 @@
+> **Archived.** Merged into the single register [docs/DECISIONS.md](../../DECISIONS.md) on 2026-10-10; see the [old → new number map](../../decisions/README.md). Kept unchanged for history; names in this file are the prototype's.
+
 # ADR-003: Persist the attempt before calling the provider; no provider I/O under a lock
 
 **Status:** Accepted

@@ -1,31 +1,51 @@
 # IntentGuard documentation
 
 IntentGuard is a research prototype. It runs only against a simulated payment provider with
-synthetic customers, orders and money, and never connects to a real payment system.
-
-These documents describe the code as it is in this repository: `backend/` (protocol, services,
-tests), `experiments/bench/` (benchmark) and `frontend/` (React dashboard). Every result quoted
-here comes from the measured run in
+synthetic customers, orders and money, and never connects to a real payment system. Every result
+quoted in these documents comes from the measured run in
 [`experiments/results/latest/summary.md`](../experiments/results/latest/summary.md).
+
+The documentation has two layers:
+
+- **Target spec** (the uppercase files in this folder): what *IntentGuard Recovery* should be. The
+  code was rebuilt to it, and each file marks what is implemented and what is *planned*.
+- **As-built reference** (the subfolders): what the code does today, file by file. Each page links
+  to the target section it implements.
+
+## Target spec
+
+| Document | Contents |
+|---|---|
+| [PRD.md](PRD.md) | Problem, users, goals and non-goals, requirements with build status, phasing |
+| [FEATURES.md](FEATURES.md) | Every feature with its status (implemented / partial / planned) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Components, invariants, state model (generated from the code), data flows, deployment |
+| [API.md](API.md) | The REST contract; the matching schema is [api/openapi.json](api/openapi.json) |
+| [DESIGN.md](DESIGN.md) | Dashboard design system: tokens, components, pages, accessibility |
+| [SECURITY.md](SECURITY.md) | Threat model, auth, RBAC, webhooks, LLM controls, checklist |
+| [TEST_PLAN.md](TEST_PLAN.md) | What "working" means, test levels, coverage map to the real tests |
+| [DECISIONS.md](DECISIONS.md) | All architecture decisions, one numbering (ADR-001 to ADR-035) |
 
 ## Reading order
 
 New to the project:
 
-1. [product/prd.md](product/prd.md): the problem, who it is for, goals and non-goals
-2. [product/overview.md](product/overview.md): the four identities (intent, proposal, attempt, effect) and a glossary
-3. [architecture/overview.md](architecture/overview.md): components, trust boundary, how a request flows
-4. [operations/running.md](operations/running.md), then [operations/demo.md](operations/demo.md): run it and try the four demo scenarios
+1. [PRD.md](PRD.md), then [product/overview.md](product/overview.md): the problem, and the four
+   identities (intent, proposal, attempt, effect)
+2. [ARCHITECTURE.md](ARCHITECTURE.md), then [architecture/overview.md](architecture/overview.md):
+   components, trust boundary, how a request flows
+3. [operations/running.md](operations/running.md), then [operations/demo.md](operations/demo.md):
+   run it, sign in, and try the four demo scenarios
 
-Working on the protocol:
+Working on the code:
 
+- [RULES.md](RULES.md) and [CONTRIBUTING.md](CONTRIBUTING.md): invariants you must not break, where things go
 - [architecture/state-machine.md](architecture/state-machine.md): every intent state and legal transition (generated from `TRANSITIONS`)
-- [architecture/reconciliation.md](architecture/reconciliation.md): unknown outcomes, the absence window, recovery, key generations
+- [architecture/reconciliation.md](architecture/reconciliation.md): unknown outcomes, the absence window, recovery, webhooks, reconciliation runs, the investigator
 - [architecture/data-model.md](architecture/data-model.md): tables and the constraints the database enforces
-- [architecture/api.md](architecture/api.md): gateway and provider HTTP endpoints
+- [architecture/api.md](architecture/api.md): every gateway and provider endpoint, as built
 - [security/threat-model.md](security/threat-model.md): what the gateway assumes and guarantees
-- [testing/test-plan.md](testing/test-plan.md): the 42 tests, grouped by what they prove
-- [decisions/](decisions/): architecture decision records
+- [testing/test-plan.md](testing/test-plan.md): the tests, grouped by what they prove
+- [TASKS.md](TASKS.md): open work
 
 Research:
 
@@ -39,14 +59,15 @@ Research:
 
 | Folder | Contents |
 |---|---|
-| `product/` | Requirements and core concepts |
+| `product/` | Core concepts and requirements as built |
 | `architecture/` | How the system is built |
-| `security/` | Threat model and invariants |
+| `api/` | `openapi.json`, exported from the gateway by `scripts/export_openapi.py` (CI checks it) |
+| `security/` | Threat model and invariants as built |
 | `research/` | Method, results, limitations, paper, references |
-| `decisions/` | ADRs, one per decision |
-| `testing/` | Test plan |
+| `decisions/` | Map from the prototype's old ADR numbers to [DECISIONS.md](DECISIONS.md) |
+| `testing/` | Test plan as built |
 | `operations/` | Running locally, on Windows, with Docker; demo walkthrough |
 | `diagrams/` | Architecture diagram (Mermaid, HTML, PNG) and the generated state diagram |
-| `archive/` | Documents from the earlier prototype, kept for history only. **Their numbers are not measured results.** |
+| `archive/` | Documents from the earlier prototype and its old ADR files, kept for history only. **Their numbers are not measured results.** |
 
 `presentation/` is not tracked by git.

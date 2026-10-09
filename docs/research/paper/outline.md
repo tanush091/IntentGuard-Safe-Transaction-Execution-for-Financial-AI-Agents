@@ -16,8 +16,8 @@ Every number in the paper must come from `experiments/results/latest/summary.md`
 | 5 | Experimental method | Simulator, 30 categories in 6 families, agent error model and runtime, arms A–E, ablations, oracle, statistics | [../methodology.md](../methodology.md) | Drafted |
 | 6 | Results | Table 1 (baselines vs. E), Table 2 (selected categories), findings 1–6 | `summary.md`; `summary.json` (`categories`, `latency_p95_ms`, `recovered_effects`) | Numbers checked |
 | 7 | Ablations | Table 3; overlapping vs. non-overlapping safeguards | `summary.md` ablation table; `backend/tests/test_ablations.py` | Numbers checked |
-| 8 | Verification beyond the benchmark | The 42 tests, including property-based safety | [../../testing/test-plan.md](../../testing/test-plan.md) | Drafted |
-| 9 | Limitations and threats to validity | Simulator, scripted errors, optimistic D, absence window, SQLite only, latency, provenance | [../limitations.md](../limitations.md) | Drafted |
+| 8 | Verification beyond the benchmark | The 127 backend tests (SQLite and PostgreSQL), including property-based safety | [../../testing/test-plan.md](../../testing/test-plan.md) | Drafted |
+| 9 | Limitations and threats to validity | Simulator, scripted errors, optimistic D, absence window, SQLite-only benchmark, latency, provenance | [../limitations.md](../limitations.md) | Drafted |
 | 10 | Conclusion | | | Drafted |
 
 ## Open items before submission
@@ -30,5 +30,6 @@ Every number in the paper must come from `experiments/results/latest/summary.md`
    so the metadata records the exact commit; latency values would change.
 3. **Related work** — **TODO.** Verify every citation in [../references.md](../references.md)
    against the primary source before it appears in the paper.
-4. **PostgreSQL** — exercise it in CI, or keep the limitation.
+4. **PostgreSQL** — CI now runs the backend tests against PostgreSQL; the benchmark still runs on
+   SQLite only, so keep the limitation for the results.
 5. **Venue formatting** — not started.

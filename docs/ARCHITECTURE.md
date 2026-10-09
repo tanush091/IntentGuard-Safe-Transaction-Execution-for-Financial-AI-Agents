@@ -1,5 +1,9 @@
 # Architecture (ARCHITECTURE.md) — IntentGuard Recovery
 
+> **Status:** implemented on the simulated provider. Items marked *planned* are not built (real provider adapters, Redis, multi-tenancy, a hosted deployment).
+> The as-built reference describes the code in detail: [architecture/overview.md](architecture/overview.md), [state machine](architecture/state-machine.md), [data model](architecture/data-model.md), [reconciliation](architecture/reconciliation.md), [API](architecture/api.md).
+> Decisions are in [DECISIONS.md](DECISIONS.md).
+
 ## 1. System overview
 
 IntentGuard Recovery is a middleware service between an application / AI agent and a payment provider. It owns submission, retry, cancellation and final resolution. The provider's observed effect is the source of truth.
@@ -25,12 +29,12 @@ IntentGuard Recovery is a middleware service between an application / AI agent a
  └───────┬───────────────────────────┬────────────────────────┘
          │                           │
          ▼                           ▼
- ┌──────────────┐          ┌─────────────────────┐
- │  PostgreSQL  │          │ Provider Port       │
- │  ledger+audit│          │  ├ Stripe (test)    │
- └──────────────┘          │  ├ Razorpay (opt.)  │
-         ▲                 │  └ paysim (mock)    │
-         │                 └─────────┬───────────┘
+ ┌──────────────┐          ┌──────────────────────────┐
+ │  PostgreSQL  │          │ Provider Port            │
+ │  (or SQLite) │          │  ├ paysim (simulator)    │
+ │  ledger+audit│          │  ├ Stripe test (planned) │
+ └──────────────┘          │  └ Razorpay   (planned)  │
+         ▲                 └─────────┬────────────────┘
          │                           │ webhooks (signed)
  ┌───────┴────────┐                  ▼
  │ Exception      │◄──── Reconciliation worker
@@ -46,13 +50,13 @@ IntentGuard Recovery is a middleware service between an application / AI agent a
 | Layer | Responsibility | Trust |
 |-------|----------------|-------|
 | **Client layer** | Operator dashboard, integrating apps, AI agents | Untrusted input |
-| **API layer** | FastAPI routers, JWT auth, request validation (Pydantic v2), rate limits | Trusted boundary |
+| **API layer** | FastAPI routers (`backend/gateway_api`), JWT auth and role/scope checks, strict request validation (Pydantic v2), rate limits, client idempotency | Trusted boundary |
 | **Gateway engine** | Checks, state machine, idempotency, attempt control | Trusted, deterministic |
 | **Recovery layer** | Reconciliation worker, webhook ingestion, state-aware recovery, retry policy | Trusted, deterministic |
-| **Exception investigator** | LLM classification + evidence summary; advisory only | Untrusted output, policy-gated |
+| **Exception investigator** | Classification + evidence summary (offline rules by default, or an LLM); advisory only (`backend/investigator`) | Untrusted output, policy-gated |
 | **Provider port/adapters** | Common interface over providers; fault injection in sim | Trusted code, untrusted responses |
 | **Persistence** | PostgreSQL ledger, append-only audit log | Source of durable truth |
-| **Coordination (optional)** | Redis for short-lived locks/queues; PostgreSQL stays authoritative | Non-authoritative |
+| **Coordination (optional, planned)** | Redis for short-lived locks/queues; PostgreSQL stays authoritative. Not used: the worker runs in the gateway process | Non-authoritative |
 
 ## 3. Key design rules (invariants)
 
@@ -67,19 +71,63 @@ IntentGuard Recovery is a middleware service between an application / AI agent a
 9. The LLM may classify and summarize; the policy gate decides what is permitted.
 10. Audit log is append-only and hash-chained; entries are never rewritten.
 
-## 4. State machine
+## 4. State model
 
+The authoritative transition table lives in code (`backend/intentguard/domain.py`, `TRANSITIONS`). The diagram below is generated from it; regenerate it rather than editing by hand. The [as-built state machine page](architecture/state-machine.md) explains every state and transition.
+
+```mermaid
+stateDiagram-v2
+    [*] --> AUTHORIZED
+    AUTHORIZED --> IN_FLIGHT
+    AUTHORIZED --> ESCALATED
+    AUTHORIZED --> CANCELLED
+    IN_FLIGHT --> EXECUTING
+    IN_FLIGHT --> UNKNOWN
+    IN_FLIGHT --> RECONCILING
+    IN_FLIGHT --> DISCREPANCY
+    IN_FLIGHT --> ESCALATED
+    IN_FLIGHT --> COMPLETED
+    EXECUTING --> UNKNOWN
+    EXECUTING --> RECONCILING
+    EXECUTING --> DISCREPANCY
+    EXECUTING --> CANCEL_REQUESTED
+    EXECUTING --> ESCALATED
+    EXECUTING --> COMPLETED
+    UNKNOWN --> EXECUTING
+    UNKNOWN --> RECONCILING
+    UNKNOWN --> DISCREPANCY
+    UNKNOWN --> ESCALATED
+    UNKNOWN --> COMPLETED
+    RECONCILING --> IN_FLIGHT
+    RECONCILING --> ESCALATED
+    RECONCILING --> CANCELLED
+    DISCREPANCY --> EXECUTING
+    DISCREPANCY --> UNKNOWN
+    DISCREPANCY --> RECONCILING
+    DISCREPANCY --> ESCALATED
+    DISCREPANCY --> COMPLETED
+    CANCEL_REQUESTED --> ESCALATED
+    CANCEL_REQUESTED --> CANCELLED
+    ESCALATED --> EXECUTING
+    ESCALATED --> UNKNOWN
+    ESCALATED --> RECONCILING
+    ESCALATED --> DISCREPANCY
+    ESCALATED --> CANCEL_REQUESTED
+    ESCALATED --> COMPLETED
+    ESCALATED --> CANCELLED
+    ESCALATED --> CLOSED
+    COMPLETED --> DISCREPANCY
+    COMPLETED --> CANCEL_REQUESTED
+    COMPLETED --> ESCALATED
+    CANCELLED --> [*]
+    CLOSED --> [*]
 ```
-AUTHORIZED ─► PROPOSED ─► VALIDATED ─► EXECUTING ─► COMPLETED
-                 │            │            │
-              REJECTED     BLOCKED         ├─► UNKNOWN ─► RECONCILING ─┬─► COMPLETED (effect found)
-                                           │                            ├─► EXECUTING (controlled retry)
-                                           └─► ESCALATED                └─► ESCALATED (discrepancy / provider unreachable)
 
-PENDING (provider) ─► CANCEL_REQUESTED ─► CANCELLED (verified) | ESCALATED
-```
-
-The authoritative transition table lives in code (`backend/intentguard/domain.py`, `TRANSITIONS`). This diagram must be regenerated from it, not edited by hand.
+- **Proposal status.** Each proposal has a `ProposalStatus` of `PROPOSED`, `VALIDATED`, `REJECTED` or `BLOCKED`. It is not an intent state (ADR-029): a rejected proposal leaves the intent `AUTHORIZED`.
+- **The dashboard pipeline.** It reads `Authorized → Proposed → Validated → Executing → Outcome`. It combines the latest proposal's status with the intent state, and shows `UNKNOWN`/`RECONCILING` as "Verifying".
+- **Cancellation** (ADR-030): `CANCEL_REQUESTED` leads to `CANCELLED` once the provider shows the effect cancelled, or to `ESCALATED` when the provider refuses.
+- **`DISCREPANCY`**: a live effect does not match the authorization and is being remediated.
+- **`CLOSED`**: a reviewer closed the case without the authorized effect.
 
 ## 5. Data flow
 
@@ -97,73 +145,95 @@ The authoritative transition table lives in code (`backend/intentguard/domain.py
 Same business request arrives with a new `request_id` → mapped to existing intent → `DUPLICATE` decision; no new attempt.
 
 ### 5.4 Discrepancy
-Provider shows an effect not matching authorization → record `DISCREPANCY`, open `review_case` with unresolved amount; pending items are cancelled and verified, completed items are escalated.
+Provider shows a live effect not matching the authorization (wrong amount, order or customer, or a duplicate) → intent `DISCREPANCY`. Recovery is state-aware (ADR-024): a pending refund is cancelled and a hold voided, and each is read back before it counts as reversed. A completed refund, a refused cancel, or one that cannot be verified opens a `review_case` with the amount at stake → `ESCALATED`.
 
 ### 5.5 Exception investigation
-Ambiguous case → evidence bundle (provider responses, webhook events, ledger rows) → LLM returns `{classification, summary, recommended_action}` → policy gate checks action ∈ permitted set for the current state → execute or escalate.
+On demand, for an intent in an exception state: build the evidence bundle (attempts, effects, provider lookups, webhook events, ledger rows, redacted) → the classifier returns `{classification, summary, recommended_action}` under a strict schema → the policy gate checks the action against the current facts → the verdict is stored. An operator may then apply a permitted recommendation; applying re-checks the gate on fresh evidence and uses the engine's own operations (ADR-033).
 
 ### 5.6 Webhooks
-Signed provider event → verify signature → dedupe by event ID → store → order by provider timestamp/sequence → feed reconciliation. Out-of-order and repeated delivery are expected.
+Signed provider event → verify signature and timestamp tolerance → dedupe by event ID → store → **re-fetch** the transaction from the provider → feed reconciliation (ADR-021).
+- Because state comes from the re-fetch, never from the payload, out-of-order and repeated delivery are harmless.
+- A transaction no intent accounts for becomes a `MISSING` mismatch.
+
+### 5.7 Reconciliation runs
+- The **worker** runs in the gateway process and drives due intents (reconcile, recover, retry, escalate). Each pass that processed at least one intent is recorded as a `WORKER` run.
+- A **matching** run, triggered from the dashboard or `POST /reconciliation/runs`, compares orders, refunds, holds and effects with the provider. It records `MISSING`, `DUPLICATE`, `AMOUNT`, `ORDER` and `CUSTOMER` mismatches, and changes nothing.
 
 ## 6. Data model (summary)
 
+Schema version 2, in `backend/intentguard/models.py`. Details: [architecture/data-model.md](architecture/data-model.md).
+
 | Table | Purpose |
 |-------|---------|
-| `users` | operators, reviewers, admins, service principals; role |
-| `authorizations` / `intents` | operator authorization, limits, `approval_status`, derived state, generation |
-| `agent_proposals` | every proposal incl. `request_id` |
-| `gateway_decisions` | decision + reason code per proposal |
-| `transaction_attempts` | one row per provider call; `provider_request_id`, status |
-| `effects` | observed provider effects (unique per provider transaction) |
-| `webhook_events` | raw verified events, dedupe key |
-| `review_cases` | discrepancy, reason, status, resolution |
-| `investigations` | LLM classification, evidence refs, recommended action, policy verdict |
-| `audit_logs` | append-only, hash-chained |
+| `users` | operators, reviewers, admins, agent principals; role, permitted operations, limit, lockout |
+| `refresh_tokens`, `service_tokens` | hashed rotating refresh tokens (family revocation); issued agent tokens (revocable by `jti`) |
+| `orders` | orders the gateway knows (customer, currency, value) |
+| `intents` | the operator authorization: binding, `approval_status`, derived state, key generation, cancel request |
+| `agent_proposals` | every proposal including `request_id`, with its `ProposalStatus` |
+| `gateway_decisions` | one decision + findings (reason codes) per proposal |
+| `transaction_attempts` | one row per provider call: key, status, lease, provider reference |
+| `effects` | observed provider effects (unique per provider transaction), classification, remediation |
+| `review_cases` | reason, amount at stake, status, resolution |
+| `webhook_events` | verified events, unique per provider and event id, delivery count, outcome |
+| `reconciliation_runs`, `mismatches` | worker and matching runs; mismatches with a fingerprint and status |
+| `investigations` | classification, evidence refs, recommended action, policy verdict, applied outcome |
+| `policies`, `provider_configs` | admin settings kept across restarts (provider secret write-only) |
+| `api_idempotency` | stored responses for client `Idempotency-Key` replay |
+| `counters`, `schema_meta` | identifier sequences (INT-, ATT-); schema version |
+| `audit_logs` | append-only, hash-chained per intent plus a system chain |
 
-DB-level guarantees: at most one live intended effect per intent (partial unique index); one effect row per provider transaction; audit table protected by triggers against UPDATE/DELETE.
+DB-level guarantees (ADR-025):
+- at most one counted effect per intent (partial unique index);
+- one effect row per provider transaction;
+- unique attempt numbers per intent;
+- unique webhook events;
+- the audit table protected by triggers against UPDATE/DELETE, on SQLite and PostgreSQL.
 
 ## 7. Deployment topology
 
 | Component | Dev | Production-like |
 |-----------|-----|-----------------|
-| Gateway API | uvicorn :8000 | container behind TLS proxy |
-| Provider | paysim API :8001 | real provider **test mode** |
-| Database | SQLite | PostgreSQL (e.g. Supabase) |
-| Worker | in-process thread | separate process; Redis optional |
-| Frontend | Vite dev :3000 | static build (e.g. Vercel) |
+| Gateway API | uvicorn :8000 | container (non-root) behind a TLS proxy *(proxy planned)* |
+| Provider | paysim API :8001 | paysim container; real provider **test mode** *(planned)* |
+| Database | SQLite | PostgreSQL 16 (`docker-compose.yml`) |
+| Worker | in-process task in the gateway | the same; a separate process and Redis are *planned* if throughput needs them |
+| Frontend | Vite dev server on 127.0.0.1:3000 | static build served by unprivileged nginx with security headers (`docker compose`: http://localhost:3000) |
+
+`start.bat` runs the dev column on Windows; `docker compose up --build` runs the production-like column with the simulator. See [operations/running.md](operations/running.md).
 
 ## 8. Repository layout
 
 The system coordinates across a backend and a frontend; the contract between them is `API.md`.
 
-### Monorepo (current plan)
+### Monorepo (as built)
 ```
 intentguard/
 ├── backend/
-│   ├── intentguard/        # protocol core: domain, checks, engine, ledger, audit, ports, agents
-│   ├── gateway_api/        # FastAPI gateway + reconciliation worker
-│   ├── provider_api/       # mock provider HTTP service
+│   ├── intentguard/        # protocol core: domain, checks, engine, models, audit, providers/, agents/
+│   ├── gateway_api/        # FastAPI gateway: routers/, security, webhooks, reconciliation runs, seed
+│   ├── investigator/       # evidence bundle, classifiers (offline rules / LLM), policy gate
+│   ├── provider_api/       # simulator HTTP service (+ signed webhook emitter)
 │   ├── paysim/             # provider simulator + fault injection
-│   ├── adapters/           # (new) stripe_test/, razorpay_test/
-│   ├── investigator/       # (new) LLM classifier, evidence builder, policy gate
-│   ├── tests/
+│   ├── tests/              # 127 tests; also run against PostgreSQL in CI
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── api/            # typed client generated from API.md / OpenAPI
-│   │   ├── components/
-│   │   ├── pages/          # Overview, Intents, Review, Audit, Experiments
-│   │   ├── hooks/
-│   │   └── styles/         # tokens from DESIGN.md
+│   │   ├── api/            # HTTP client + one route table, checked against docs/api/openapi.json
+│   │   ├── components/     # pipeline, timeline, status pills, demo scenario cards, widgets
+│   │   ├── pages/          # Login, Overview, Intents, IntentDetail, Exceptions, Reviews,
+│   │   │                   # Reconciliation, Audit, Experiments, Admin
+│   │   ├── hooks/          # auth session, polling
+│   │   └── styles/         # tokens from DESIGN.md, app styles
+│   ├── scripts/check-contract.mjs
 │   └── package.json
 ├── experiments/
 │   ├── bench/
 │   └── results/
-├── docs/                   # these documents live here
-├── deploy/
-├── scripts/
-└── .github/workflows/
+├── docs/                   # target specs (this folder's root) + as-built reference (subfolders)
+├── scripts/                # launchers, init_env, check_db, export_openapi, check_bench_safety
+└── .github/workflows/ci.yml
 ```
+*Planned:* `backend/intentguard/providers/` gains real sandbox adapters (Stripe or Razorpay test mode), and a `deploy/` folder for a hosted setup.
 
 ### Split-repo option
 If backend and frontend become separate repositories, `API.md` (plus the generated OpenAPI file) is the only coordination surface; version it and publish it from the backend repo.
@@ -172,13 +242,15 @@ If backend and frontend become separate repositories, `API.md` (plus the generat
 
 | Concern | Choice |
 |---------|--------|
-| Backend | Python, FastAPI, Pydantic v2 |
-| ORM / DB | SQLAlchemy 2.0; SQLite (dev), PostgreSQL (prod) |
-| Jobs | Background worker; Redis + Celery only when needed |
-| LLM | Lightweight LLM API (Gemini / OpenAI / Ollama) behind one interface; offline rule extractor as default fallback |
-| Frontend | React + Vite |
-| Tests | pytest, Hypothesis, seeded benchmark |
-| Containers | Docker Compose |
+| Backend | Python 3.12+, FastAPI, Pydantic v2, pydantic-settings |
+| Auth | PyJWT (HS256), argon2-cffi (argon2id) |
+| ORM / DB | SQLAlchemy 2.0; SQLite (dev), PostgreSQL 16 (compose, CI) |
+| Jobs | In-process background worker; Redis + Celery only when needed (*planned*, not used) |
+| LLM | Gemini / OpenAI-compatible / Ollama behind one interface; offline rule extractor and rule classifier as defaults |
+| Frontend | React 18, Vite 7, Recharts, lucide-react, self-hosted fonts |
+| Tests | pytest, Hypothesis, Vitest, route contract check, seeded benchmark with a CI safety gate |
+| Containers | Docker Compose (non-root images) |
+| CI | GitHub Actions: ruff, SQLite + PostgreSQL suites, OpenAPI drift, frontend, benchmark gate, gitleaks, pip-audit, `npm audit`, image build |
 
 No orchestration framework in v1; a plain service, an explicit state machine and a constrained LLM call are sufficient.
 
@@ -189,5 +261,5 @@ No orchestration framework in v1; a plain service, an explicit state machine and
 | Safety | Deterministic gate; LLM advisory; provider-verified outcomes |
 | Durability | Persist-before-call; crash recovery marks `SUBMITTING` attempts `UNKNOWN` on startup |
 | Auditability | Hash-chained append-only log; evidence reference on every recovery action |
-| Observability | Metrics summary endpoint, per-intent timeline, live console |
+| Observability | Metrics summary endpoint (with metric definitions), per-intent timeline, live console, request ids on every response; alerting is *planned* |
 | Honest limits | Effectively-once where provider semantics support it; no universal exactly-once claim |

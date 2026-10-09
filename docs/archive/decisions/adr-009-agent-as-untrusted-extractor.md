@@ -1,3 +1,5 @@
+> **Archived.** Merged into the single register [docs/DECISIONS.md](../../DECISIONS.md) on 2026-10-10; see the [old → new number map](../../decisions/README.md). Kept unchanged for history; names in this file are the prototype's.
+
 # ADR-009: The agent only proposes; the LLM is an extractor
 
 **Status:** Accepted (carries forward the "deterministic extraction fallback" ADR in the archive)

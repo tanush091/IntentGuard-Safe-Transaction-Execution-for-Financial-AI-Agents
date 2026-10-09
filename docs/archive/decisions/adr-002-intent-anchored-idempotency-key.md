@@ -1,3 +1,5 @@
+> **Archived.** Merged into the single register [docs/DECISIONS.md](../../DECISIONS.md) on 2026-10-10; see the [old → new number map](../../decisions/README.md). Kept unchanged for history; names in this file are the prototype's.
+
 # ADR-002: One provider idempotency key per intent, with generations
 
 **Status:** Accepted (supersedes the earlier `idem_{intent_id}` scheme in the archived DECISIONS.md)

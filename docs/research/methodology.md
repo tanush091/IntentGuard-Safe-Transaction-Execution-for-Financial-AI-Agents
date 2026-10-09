@@ -2,6 +2,12 @@
 
 Code: [`experiments/bench/`](../../experiments/bench/). Results: [results.md](results.md).
 
+The benchmark runs the protocol in-process (`backend/intentguard` against the `backend/paysim`
+simulator); the HTTP gateway and the features built on it (authentication, webhooks,
+reconciliation runs, the investigator, the dashboard) are not part of it. The vocabulary rename
+(commit `2432352`) and the later rebuild left benchmark behaviour unchanged: a quick run (1,800
+rows) had 0 differing cells against the pre-rebuild reference.
+
 ## Research question
 
 Does an intent-consistent transaction protocol reduce incorrect and duplicate final financial
@@ -57,7 +63,7 @@ exceed the 30 s absence window), settle delays of 20–180 s, wrong-amount facto
 
 - Error modes: ×10 amount, rupee/paisa unit confusion, near-miss order (same customer), transposed
   order (other customer), wrong customer, wrong currency.
-- 40% of agent errors are **persistent** (`P_PERSISTENT_ERROR = 0.4`): they repeat on every
+- 40% of agent errors are **persistent** (`P_PERSISTENT_ERROR = 0.4` in `experiments/bench/scenarios.py`): they repeat on every
   re-proposal. Such intents are marked not achievable; the correct outcome is that nothing executes.
   Transient errors affect only the first proposal.
 - Runtime: the agent retries the same request up to 2 times after an error or timeout (2 s
