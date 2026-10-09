@@ -14,7 +14,7 @@ from gateway_api.routers.deps import guard_of, simulator_only
 from gateway_api import seed as seed_mod
 from gateway_api.schemas import DemoOrderIn, FaultIn
 from gateway_api.security import Principal, now, require
-from gateway_api.serializers import amount
+from gateway_api.serializers import amount, redact
 from intentguard.models import Order
 from intentguard.money import to_minor
 
@@ -115,8 +115,10 @@ def clear_faults(request: Request, p: Principal = Depends(require("dev"))) -> An
 def ledger(request: Request, order_id: str | None = None, p: Principal = Depends(require("dev"))) -> Any:
     sim = request.app.state.sim
     if sim is not None:
-        return [t.public() for t in sim.all_transactions() if order_id is None or t.order_id == order_id]
-    return _provider_call(request, "GET", "/v1/ledger", params={"order_id": order_id} if order_id else None)
+        rows = [t.public() for t in sim.all_transactions() if order_id is None or t.order_id == order_id]
+    else:
+        rows = _provider_call(request, "GET", "/v1/ledger", params={"order_id": order_id} if order_id else None)
+    return redact(rows)  # API contract rule 4: the derived provider idempotency key is never exposed
 
 
 @dev.post("/worker/tick", summary="Run one worker pass now")

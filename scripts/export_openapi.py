@@ -5,7 +5,7 @@ Export the gateway's OpenAPI schema to docs/api/openapi.json.
     python scripts/export_openapi.py --check   # exit 1 if the committed file is out of date (CI)
 
 The committed schema is what frontend/scripts/check-contract.mjs compares the dashboard's route
-table against, and what docs/api.md is generated from, so it must track the code.
+table against, and what docs/architecture/api.md is checked against, so it must track the code.
 """
 
 from __future__ import annotations

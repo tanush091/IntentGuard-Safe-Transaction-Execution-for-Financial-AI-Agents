@@ -53,8 +53,9 @@ def login(body: LoginIn, request: Request) -> JSONResponse:
             retry = int(user.locked_until - t) + 1
             raise ApiError(429, "ACCOUNT_LOCKED", "too many failed logins; try again later",
                            {"retry_after_s": retry}, headers={"Retry-After": str(retry)})
-        ok = (user is not None and user.active and user.role != "agent"
-              and security.verify_password(user.password_hash, body.password))
+        # Always hash, so response time does not reveal whether the email exists.
+        password_ok = security.verify_password(user.password_hash if user is not None else None, body.password)
+        ok = user is not None and user.active and user.role != "agent" and password_ok
         if not ok:
             if user is not None:
                 user.failed_logins += 1

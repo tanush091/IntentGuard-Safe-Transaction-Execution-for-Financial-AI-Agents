@@ -135,3 +135,12 @@ def test_security_headers(api):
     r = api.client.get("/api/health")
     assert r.headers["x-content-type-options"] == "nosniff"
     assert "default-src 'none'" in r.headers["content-security-policy"]
+
+
+def test_simulator_ledger_never_exposes_the_provider_idempotency_key(api):
+    """API contract rule 4 holds on the simulator-only ledger endpoint too."""
+    asha = api.login()
+    iid = api.authorize(asha)
+    assert api.propose(asha, iid).json()["decision"] == "ALLOW"
+    rows = api.client.get("/api/dev/ledger", headers=asha, params={"order_id": "ORD-204"}).json()
+    assert rows and "ig-" not in str(rows)

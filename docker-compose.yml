@@ -5,8 +5,9 @@ services:
       POSTGRES_USER: intentguard
       POSTGRES_PASSWORD: intentguard_secret
       POSTGRES_DB: intentguard_db
+    # Loopback only: the database password above is a fixed development value.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -28,8 +29,9 @@ services:
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
     volumes:
       - paysim:/data
+    # Loopback only: the simulator has no authentication; the gateway reaches it on the compose network.
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
 
   gateway:
     build:
