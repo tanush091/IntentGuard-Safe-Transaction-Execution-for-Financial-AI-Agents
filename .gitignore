@@ -55,3 +55,6 @@ experiments/results/*/
 # Presentation decks (untracked)
 docs/presentation/
 
+
+# CI quick benchmark output (scripts/check_bench_safety.py)
+.bench-ci/

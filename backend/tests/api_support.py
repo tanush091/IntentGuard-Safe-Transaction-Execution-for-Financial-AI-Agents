@@ -65,17 +65,25 @@ class Api:
 
 def _configure(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, provider_mode: str) -> Any:
     from gateway_api import settings as settings_mod
+    from tests.conftest import fresh_database_url
 
     s = settings_mod.settings
     for key, value in {
-        "DATABASE_URL": f"sqlite:///{(tmp_path / 'gw.db').as_posix()}", "PAYMENT_PROVIDER": provider_mode,
+        "DATABASE_URL": fresh_database_url(tmp_path), "PAYMENT_PROVIDER": provider_mode,
         "DEMO_SEED": True, "DEMO_PASSWORD": PASSWORD, "SIMULATOR_MODE": True, "JWT_SECRET": "j" * 48,
         "WEBHOOK_SECRET": WEBHOOK_SECRET, "COOKIE_SECURE": False, "WORKER_INTERVAL_S": 3600.0,
         "RATE_LIMIT_PER_MINUTE": 100000, "LOGIN_RATE_LIMIT_PER_MINUTE": 100000,
     }.items():
         monkeypatch.setattr(s, key, value)
     monkeypatch.setenv("LLM_PROVIDER", "offline")
+    from argon2 import PasswordHasher
+
+    from gateway_api import security
     from gateway_api.security import limiter
+
+    # Still argon2id, at minimal cost: production parameters spend ~0.3 s per hash, and every test seeds
+    # five users and logs in several times.
+    monkeypatch.setattr(security, "_hasher", PasswordHasher(time_cost=1, memory_cost=1024, parallelism=1))
 
     limiter.reset()
     return s

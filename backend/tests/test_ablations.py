@@ -15,6 +15,7 @@ from intentguard import Decision, IntentState, ProtocolConfig
 from intentguard.models import Attempt
 from paysim import FaultKind, TxStatus
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from tests.conftest import make_world
 
@@ -138,9 +139,20 @@ def test_serialization_off_lets_concurrent_agents_both_pass_the_gate(tmp_path, m
         for t in threads:
             t.join(10)
         monkeypatch.undo()
-        if errors:
+        sqlite = w.db_url.startswith("sqlite")
+        if errors and (serialize or sqlite or not _attempt_number_conflict(errors[0])):
             raise errors[0]
-        results[serialize] = (decisions, len(w.live()))
+        results[serialize] = (decisions, len(w.live()), errors)
 
     assert results[True][0].count(Decision.ALLOW) == 1 and results[True][1] == 1
-    assert results[False][0].count(Decision.ALLOW) == 2 and results[False][1] == 2
+    if sqlite:
+        # SQLite's database-wide write lock orders the two reservations: both agents execute.
+        assert results[False][0].count(Decision.ALLOW) == 2 and results[False][1] == 2
+    else:
+        # PostgreSQL: both agents reserve attempt 1 concurrently; the (intent_id, attempt_no) unique constraint
+        # rejects the second reservation, so the ablated path fails loudly instead of executing twice.
+        assert results[False][0] == [Decision.ALLOW] and results[False][1] == 1 and len(results[False][2]) == 1
+
+
+def _attempt_number_conflict(exc: BaseException) -> bool:
+    return isinstance(exc, IntegrityError) and "uq_attempt_no" in str(exc)

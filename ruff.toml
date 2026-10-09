@@ -1,0 +1,15 @@
+# Lint configuration (run in CI: .github/workflows/ci.yml). Deliberately conservative: errors and
+# likely bugs (pyflakes, pycodestyle errors, bugbear), not formatting or import style.
+line-length = 120
+target-version = "py312"
+extend-exclude = ["frontend", "docs"]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "W", "B"]
+# FastAPI's `Depends(...)` / `Query(...)` defaults are the framework's idiom, not shared mutable state.
+ignore = ["B008"]
+
+[lint.per-file-ignores]
+# Thread bodies defined inside a loop are started and joined within the same iteration.
+"experiments/bench/runner.py" = ["B023"]
+"backend/tests/test_ablations.py" = ["B023"]

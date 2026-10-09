@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import itertools
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
 
 from intentguard import IntentGuard, Operation, Proposal, ProtocolConfig
 from intentguard.clock import SimulatedClock
@@ -15,6 +18,24 @@ from paysim import Fault, FaultKind, Order, PaymentSimulator, TxStatus
 from tests.api_support import api, api_inprocess  # noqa: F401 - HTTP fixtures
 
 _ids = itertools.count()
+
+# Set TEST_DATABASE_URL (PostgreSQL) to run every test against that database instead of SQLite; CI does
+# this in its PostgreSQL job. The database is wiped before each test, so its name must contain "test".
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
+
+
+def fresh_database_url(tmp_path: Path, *, file_db: bool = True) -> str:
+    """A fresh database for one test: TEST_DATABASE_URL (reset), else a SQLite file or memory database."""
+    if not TEST_DATABASE_URL:
+        return f"sqlite:///{(tmp_path / 'ig.db').as_posix()}" if file_db else "sqlite://"
+    if "test" not in (make_url(TEST_DATABASE_URL).database or ""):
+        raise RuntimeError("TEST_DATABASE_URL must name a dedicated test database (its name must contain 'test')")
+    engine = make_engine(TEST_DATABASE_URL)
+    with engine.begin() as c:
+        c.execute(text("DROP SCHEMA public CASCADE"))
+        c.execute(text("CREATE SCHEMA public"))
+    engine.dispose()
+    return TEST_DATABASE_URL
 
 
 @dataclass
@@ -76,7 +97,7 @@ def make_world(tmp_path: Path, config: ProtocolConfig | None = None, *, file_db:
     clock = SimulatedClock()
     sim = PaymentSimulator(clock.now, id_seed=1)
     tmp_path.mkdir(parents=True, exist_ok=True)
-    url = f"sqlite:///{(tmp_path / 'ig.db').as_posix()}" if file_db else "sqlite://"
+    url = fresh_database_url(tmp_path, file_db=file_db)
     engine = make_engine(url)
     init_schema(engine)
     sf = make_session_factory(engine)

@@ -1,0 +1,13 @@
+# Secret scanning (CI: .github/workflows/ci.yml). Default gitleaks rules, plus an allowlist for the
+# fixed fake values the test suite uses. Exact literals only, so a real secret in a test still fails.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake secrets used only by backend/tests"
+condition = "AND"
+paths = ['''^backend/tests/''']
+regexes = [
+  '''whsec_test_secret_0123456789''',
+  '''wrong-secret-0123456789''',
+]

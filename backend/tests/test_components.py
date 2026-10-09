@@ -127,7 +127,10 @@ def test_audit_log_is_append_only_and_tamper_evident(world):
         s.commit()
     # Someone with schema access drops the trigger and rewrites history: verification catches it.
     with world.guard.session() as s:
-        s.execute(text("DROP TRIGGER audit_no_update"))
+        if s.get_bind().dialect.name == "postgresql":
+            s.execute(text("DROP TRIGGER audit_no_modify ON audit_logs"))
+        else:
+            s.execute(text("DROP TRIGGER audit_no_update"))
         s.execute(text("UPDATE audit_logs SET payload = '{}' WHERE seq = 2"))
         s.commit()
         result = audit.verify(s)
